@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מחולל כיתוביות ותרגום AI מקומי (Web Worker)</title>
+    
+    <!-- טעינת Tailwind CSS לעיצוב -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- טעינת מפת ייבוא (Import Map) עבור React ורכיביו -->
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "lucide-react": "https://esm.sh/lucide-react@0.263.0"
+            }
+        }
+    </script>
+    
+    <!-- טעינת Babel כדי לאפשר כתיבת קוד React (JSX) ישירות בדפדפן -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #374151; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6B7280; }
+        
+        /* אנימציית הבהוב לאזהרה */
+        @keyframes pulse-warning {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .warning-glow { animation: pulse-warning 2s infinite; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+    
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useRef, useEffect } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, ShieldCheck, Cpu, Lock, Trash2, Bookmark, AlertTriangle } from 'lucide-react';
+
+        // ==========================================
+        // קוד ה-Web Worker: פועל ברקע ולא תוקע את המסך!
+        // ==========================================
+        const workerCode = `
+            self.Buffer = self.Buffer || { isBuffer: () => false };
+            self.global = self.global || self;
+
+            let pipeline, env;
+            let transcriber = null;
+            let translator = null;
+            let currentModelSize = null;
+
+            self.onmessage = async (e) => {
+                const { type, data } = e.data;
+
+                if (type === 'process') {
+                    try {
+                        // 1. טעינת סביבת העבודה ברקע
+                        if (!pipeline) {
+                            self.postMessage({ type: 'status', text: 'מאתחל מנוע בינה מלאכותית ברקע...' });
+                            const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/transformers.min.js');
+                            pipeline = transformers.pipeline;
+                            env = transformers.env;
+                            
+                            env.allowLocalModels = false;
+                            env.allowRemoteModels = true;
+                            env.useBrowserCache = true;
+                            env.backends.onnx.wasm.numThreads = 1;
+                            env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/';
+                        }
+
+                        // 2. טעינת מודל זיהוי קולי (Transcriber)
+                        if (!transcriber || currentModelSize !== data.modelSize) {
+                            if (transcriber && typeof transcriber.dispose === 'function') {
+                                await transcriber.dispose();
+                            }
+                            currentModelSize = data.modelSize;
+                            
+                            transcriber = await pipeline('automatic-speech-recognition', data.modelSize, {
+                                quantized: true,
+                                progress_callback: (prog) => {
+                                    self.postMessage({ type: 'progress', step: 'transcribe_load', data: prog });
+                                }
+                            });
+                        }
+
+                        self.postMessage({ type: 'status', text: 'המודל מוכן! מבצע פענוח קולי ברקע (המסך נשאר פעיל)...' });
+                        self.postMessage({ type: 'progress_percent', percent: 40 });
+
+                        // 3. פענוח שמע
+                        const whisperLang = data.mode === 'translate_en_he' ? 'en' : 'he';
+                        const output = await transcriber(data.audioData, {
+                            language: whisperLang,
+                            task: 'transcribe',
+                            chunk_length_s: 30,
+                            stride_length_s: 5,
+                            return_timestamps: true,
+                        });
+
+                        if (!output || !output.chunks || output.chunks.length === 0) {
+                            throw new Error('לא הצלחנו לזהות דיבור ברור בקובץ.');
+                        }
+
+                        // 4. תרגום (אם נדרש)
+                        if (data.mode === 'translate_en_he') {
+                            self.postMessage({ type: 'status', text: 'הפענוח הסתיים! מכין מודל תרגום לעברית...' });
+                            self.postMessage({ type: 'progress_percent', percent: 60 });
+                            
+                            if (!translator) {
+                                translator = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
+                                    quantized: true,
+                                    progress_callback: (prog) => {
+                                        self.postMessage({ type: 'progress', step: 'translate_load', data: prog });
+                                    }
+                                });
+                            }
+
+                            self.postMessage({ type: 'status', text: 'מודל תרגום מוכן! מתרגם משפטים ברקע...' });
+                            
+                            for (let i = 0; i < output.chunks.length; i++) {
+                                self.postMessage({ type: 'progress_percent', percent: 80 + Math.round((i / output.chunks.length) * 20) });
+                                const translated = await translator(output.chunks[i].text, {
+                                    src_lang: 'eng_Latn',
+                                    tgt_lang: 'heb_Hebr'
+                                });
+                                if (translated && translated.length > 0) {
+                                    output.chunks[i].text = translated[0].translation_text;
+                                }
+                            }
+                        }
+
+                        // 5. סיום והחזרת התוצאה למסך הראשי
+                        self.postMessage({ type: 'complete', chunks: output.chunks });
+
+                    } catch (err) {
+                        self.postMessage({ type: 'error', error: err.message });
+                    }
+                }
+            };
+        `;
+
+        // ==========================================
+        // אפליקציית ה-React הראשית
+        // ==========================================
+        function App() {
+          const [file, setFile] = useState(null);
+          const [status, setStatus] = useState('idle'); // idle, processing, complete, error
+          const [errorMessage, setErrorMessage] = useState('');
+          const [progress, setProgress] = useState(0);
+          const [statusText, setStatusText] = useState('');
+          const [srtResult, setSrtResult] = useState('');
+          const [modelSize, setModelSize] = useState('Xenova/whisper-base');
+          const [mode, setMode] = useState('transcribe_he');
+          const [isPersistent, setIsPersistent] = useState(false);
+          const [storageUsedMB, setStorageUsedMB] = useState('0.00');
+          
+          const fileInputRef = useRef(null);
+          const workerRef = useRef(null);
+          
+          // ניהול מעקב הורדות עבור בר ההתקדמות (מנוהל מהממשק)
+          const whisperDownloadsRef = useRef({});
+          const nllbDownloadsRef = useRef({});
+
+          useEffect(() => {
+            // יצירת ה-Worker ברגע שהאפליקציה עולה
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+            workerRef.current = new Worker(workerUrl, { type: 'module' });
+
+            workerRef.current.onmessage = (e) => {
+                const { type, text, percent, step, data, chunks, error } = e.data;
+
+                if (type === 'status') {
+                    setStatusText(text);
+                } else if (type === 'progress_percent') {
+                    setProgress(percent);
+                } else if (type === 'progress') {
+                    handleWorkerProgress(step, data);
+                } else if (type === 'complete') {
+                    const srt = formatSRT(chunks);
+                    setSrtResult(srt);
+                    setProgress(100);
+                    setStatus('complete');
+                    calculateStorageUsed(); // רענון מד האחסון בסיום
+                } else if (type === 'error') {
+                    console.error("Worker Error:", error);
+                    setStatus('error');
+                    setErrorMessage(error || 'אירעה שגיאה בעיבוד נתונים ברקע.');
+                }
+            };
+
+            // בקשת אחסון קבוע
+            async function initStorage() {
+              if (navigator.storage && navigator.storage.persist) {
+                let persisted = await navigator.storage.persisted();
+                if (!persisted) {
+                  persisted = await navigator.storage.persist();
+                }
+                setIsPersistent(persisted);
+              }
+              calculateStorageUsed();
+            }
+            initStorage();
+
+            return () => {
+                if (workerRef.current) workerRef.current.terminate();
+            };
+          }, []);
+
+          const handleWorkerProgress = (step, data) => {
+              if (step === 'transcribe_load') {
+                  const downloads = whisperDownloadsRef.current;
+                  if (data.status === 'initiate') downloads[data.file] = { loaded: 0, total: 0 };
+                  else if (data.status === 'progress') downloads[data.file] = { loaded: data.loaded || 0, total: data.total || 0 };
+                  else if (data.status === 'done' && downloads[data.file]) downloads[data.file].loaded = downloads[data.file].total;
+                  
+                  updateProgressFromDownloads(downloads, 10, 0.3, "זיהוי קולי");
+              } else if (step === 'translate_load') {
+                  const downloads = nllbDownloadsRef.current;
+                  if (data.status === 'initiate') downloads[data.file] = { loaded: 0, total: 0 };
+                  else if (data.status === 'progress') downloads[data.file] = { loaded: data.loaded || 0, total: data.total || 0 };
+                  else if (data.status === 'done' && downloads[data.file]) downloads[data.file].loaded = downloads[data.file].total;
+                  
+                  updateProgressFromDownloads(downloads, 60, 0.2, "תרגום");
+              }
+          };
+
+          const updateProgressFromDownloads = (downloadsObj, baseProgress, weight, modelName) => {
+              let totalLoaded = 0;
+              let totalSize = 0;
+              Object.values(downloadsObj).forEach(f => {
+                  totalLoaded += f.loaded;
+                  totalSize += f.total;
+              });
+              if (totalSize > 0) {
+                  const overallProgress = (totalLoaded / totalSize) * 100;
+                  setProgress(baseProgress + Math.round(overallProgress * weight));
+                  setStatusText(`קורא/מוריד מודל ${modelName}... ${Math.round(overallProgress)}% (המסך פנוי לשימוש)`);
+              }
+          };
+
+          const calculateStorageUsed = async () => {
+            try {
+              let totalBytes = 0;
+              if (navigator.storage && navigator.storage.estimate) {
+                const estimate = await navigator.storage.estimate();
+                if (estimate.usageDetails && estimate.usageDetails.caches) totalBytes = estimate.usageDetails.caches;
+                else totalBytes = estimate.usage || 0;
+              }
+              if (totalBytes === 0 && 'caches' in window) {
+                const cacheNames = await caches.keys();
+                for (const cacheName of cacheNames) {
+                  if (cacheName.includes('transformers')) {
+                    const cache = await caches.open(cacheName);
+                    const requests = await cache.keys();
+                    for (const req of requests) {
+                      const res = await cache.match(req);
+                      if (res) {
+                        const size = res.headers.get('content-length');
+                        if (size) totalBytes += parseInt(size, 10);
+                        else {
+                          const blob = await res.blob();
+                          totalBytes += blob.size;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              setStorageUsedMB((totalBytes / (1024 * 1024)).toFixed(2));
+            } catch (err) {
+              console.error("שגיאה בחישוב האחסון:", err);
+            }
+          };
+
+          const clearStorage = async () => {
+            if (window.confirm("האם אתה בטוח שברצונך למחוק את כל קובצי הבינה המלאכותית מהמחשב?")) {
+              try {
+                if ('caches' in window) {
+                  const cacheNames = await caches.keys();
+                  for (const cacheName of cacheNames) {
+                    if (cacheName.includes('transformers')) {
+                      await caches.delete(cacheName);
+                    }
+                  }
+                }
+                setStorageUsedMB('0.00');
+                
+                // אתחול מחדש של ה-Worker כדי לנקות לו את הזיכרון (RAM)
+                if (workerRef.current) workerRef.current.terminate();
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                workerRef.current = new Worker(URL.createObjectURL(blob), { type: 'module' });
+                
+                alert('כל קובצי המודלים נמחקו בהצלחה מהכספת והזיכרון פונה!');
+              } catch (err) {
+                console.error("שגיאה בניקוי האחסון:", err);
+                alert('אירעה שגיאה בעת ניקוי האחסון.');
+              }
+            }
+          };
+
+          const handleDragOver = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          };
+
+          const handleFileSelect = (e) => {
+            const selected = e.target.files && e.target.files.length > 0 ? e.target.files[0] : null;
+            if (selected) validateAndSetFile(selected);
+          };
+
+          const handleDrop = (e) => {
+            e.preventDefault(); 
+            e.stopPropagation();
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              validateAndSetFile(e.dataTransfer.files[0]);
+            }
+          };
+
+          const validateAndSetFile = (selectedFile) => {
+            const maxSizeMB = 100;
+            if (selectedFile.size > maxSizeMB * 1024 * 1024) {
+              setStatus('error');
+              setErrorMessage(`הקובץ גדול מדי (${(selectedFile.size / (1024*1024)).toFixed(1)}MB).`);
+              return;
+            }
+            if (selectedFile.type.startsWith('video/') || selectedFile.type.startsWith('audio/') || selectedFile.name.match(/\.(mp4|mkv|avi|mpeg|mpga|m4a|wav|webm|mp3)$/i)) {
+              setFile(selectedFile);
+              setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0);
+              whisperDownloadsRef.current = {}; nllbDownloadsRef.current = {}; // איפוס מוני הורדות
+            } else {
+              setStatus('error');
+              setErrorMessage('סוג הקובץ אינו נתמך. אנא העלה וידאו או שמע.');
+            }
+          };
+
+          const formatTime = (seconds) => {
+            if (!seconds || isNaN(seconds)) return "00:00:00,000";
+            const date = new Date(seconds * 1000);
+            const hh = String(Math.floor(seconds / 3600)).padStart(2, '0');
+            const mm = String(date.getUTCMinutes()).padStart(2, '0');
+            const ss = String(date.getUTCSeconds()).padStart(2, '0');
+            const ms = String(date.getUTCMilliseconds()).padStart(3, '0');
+            return `${hh}:${mm}:${ss},${ms}`;
+          };
+
+          const formatSRT = (chunks) => {
+            return chunks.map((chunk, index) => {
+              let startTime = formatTime(chunk.timestamp[0]);
+              let endTime = formatTime(chunk.timestamp[1] || chunk.timestamp[0] + 2);
+              return `${index + 1}\n${startTime} --> ${endTime}\n${chunk.text.trim()}`;
+            }).join('\n\n');
+          };
+
+          const processFileLocal = async () => {
+            if (!file || !workerRef.current) return;
+            
+            try {
+              setStatus('processing');
+              setErrorMessage('');
+              setProgress(5);
+              setStatusText('מחלץ נתוני שמע מהקובץ (תהליך זה לוקח שניות בודדות)...');
+
+              // חילוץ האודיו (הפעולה היחידה שרצה בחוט הראשי)
+              const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+              let arrayBuffer = await file.arrayBuffer();
+              let decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
+              let audioData = decodedAudio.getChannelData(0);
+              
+              if (audioCtx.state !== 'closed') await audioCtx.close();
+              
+              setProgress(10);
+              setStatusText('מעביר את השמע לתהליך רקע חכם (Web Worker)...');
+
+              // העברת הנתונים ל-Worker והעברת הבעלות על המערך כדי לחסוך RAM כפול
+              workerRef.current.postMessage({
+                  type: 'process',
+                  data: {
+                      audioData: audioData,
+                      modelSize: modelSize,
+                      mode: mode
+                  }
+              }, [audioData.buffer]); // Transferable Object - אופטימיזציה קריטית לזיכרון!
+
+              // ניקוי משתנים מהזיכרון הראשי
+              arrayBuffer = null;
+              decodedAudio = null;
+              audioData = null;
+
+            } catch (err) {
+              console.error('Error extracting audio:', err);
+              setStatus('error');
+              setErrorMessage(err.message || 'אירעה שגיאה בחילוץ השמע מהקובץ.');
+            }
+          };
+
+          const downloadSrt = () => {
+            if (!srtResult) return;
+            const blob = new Blob([srtResult], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+            const suffix = mode === 'translate_en_he' ? '_translated_he' : '_local_he';
+            a.download = `${originalName || 'subtitles'}${suffix}.srt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          };
+
+          const resetApp = () => {
+            setFile(null); setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0);
+            calculateStorageUsed();
+          };
+
+          return (
+            <div dir="rtl" className="min-h-screen bg-gray-100 text-gray-800 font-sans p-4 md:p-8">
+              <main className="max-w-4xl mx-auto">
+                
+                {/* התראת אזהרה - ניסיוני */}
+                <div className="bg-red-50 border-2 border-red-500 p-4 mb-4 rounded-lg shadow-md flex items-start gap-4 warning-glow">
+                  <AlertTriangle className="text-red-600 mt-1 shrink-0" size={28} />
+                  <div>
+                    <h3 className="font-bold text-red-800 text-lg">⚠️ אזהרה: כלי ניסיוני (Beta)</h3>
+                    <p className="text-red-700 mt-1 font-medium leading-relaxed">
+                      האתר והטכנולוגיה עדיין בשלבי פיתוח וניסוי. המערכת עושה שימוש כבד במעבד (CPU) ובזיכרון המחשב שלך באופן מקומי. 
+                      <strong>השימוש במערכת הוא על אחריות המשתמש בלבד.</strong> 
+                      מומלץ לא להשתמש במחשבים ישנים או חלשים מאוד כדי למנע קריסות פתאומיות.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-600 rounded-t-2xl p-6 text-white text-center shadow-md relative overflow-hidden">
+                  <div className="absolute opacity-10 -right-10 -top-10">
+                    <Cpu size={150} />
+                  </div>
+                  <h1 className="text-3xl font-bold mb-3 flex items-center justify-center gap-3 relative z-10">
+                    <HardDrive size={32} />
+                    מחולל כיתוביות ותרגום מקומי
+                  </h1>
+                  <p className="text-emerald-100 text-lg relative z-10">
+                    מבוסס תהליכי רקע (Worker) | מוגבל ל-100MB | אפס תקיעות דפדפן
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-b-2xl shadow-xl overflow-hidden border border-gray-200">
+                  
+                  <div className="bg-blue-50 border-b border-blue-100 p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-blue-100 p-2 rounded-full text-blue-700">
+                        <HardDrive size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-blue-900 text-sm">כספת מאובטחת (Cache)</h4>
+                        <p className="text-xs text-blue-700 font-medium mt-0.5">
+                          קבצים שמורים במחשב שלך תופסים: <span className="font-bold text-blue-800" dir="ltr">{storageUsedMB} MB</span>
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      onClick={clearStorage}
+                      disabled={parseFloat(storageUsedMB) === 0}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                        parseFloat(storageUsedMB) > 0 
+                          ? 'bg-white border border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400' 
+                          : 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <Trash2 size={16} />
+                      פנה מקום במחשב
+                    </button>
+                  </div>
+
+                  <div className="p-6 md:p-8">
+                    
+                    {status === 'idle' && !file && (
+                      <div 
+                        className="border-2 border-dashed border-emerald-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-emerald-50 transition-colors bg-gray-50 mb-8"
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                          <FileVideo size={56} className="text-emerald-500" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800 mb-2">גרור קובץ וידאו או שמע לכאן</h3>
+                        <p className="text-gray-500">תומך בקבצים של עד 100 מגה-בייט</p>
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          onChange={handleFileSelect} 
+                          className="hidden" 
+                          accept="video/*,audio/*"
+                        />
+                      </div>
+                    )}
+
+                    {(file || status !== 'idle') && (
+                      <div className="bg-white rounded-2xl border border-gray-200 p-6 md:p-8 shadow-sm">
+                        
+                        <div className="flex flex-col md:flex-row items-center gap-5 mb-8 pb-8 border-b border-gray-100">
+                          <div className="bg-emerald-100 p-4 rounded-2xl text-emerald-600">
+                            {file?.type?.startsWith('audio') ? <FileAudio size={40} /> : <FileVideo size={40} />}
+                          </div>
+                          <div className="flex-1 text-center md:text-right overflow-hidden w-full">
+                            <h4 className="font-bold text-xl text-gray-800 truncate" dir="ltr">{file?.name}</h4>
+                            <p className="text-gray-500 mt-1 font-medium">
+                              {(file?.size / (1024 * 1024)).toFixed(2)} מגה-בייט • עיבוד רקע חכם
+                            </p>
+                          </div>
+                          {status === 'idle' && (
+                            <button 
+                              onClick={resetApp}
+                              className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-xl transition font-bold w-full md:w-auto"
+                            >
+                              בחר קובץ אחר
+                            </button>
+                          )}
+                        </div>
+
+                        {status === 'idle' && (
+                          <div className="mb-6 bg-gray-50 p-6 rounded-xl border border-gray-200 space-y-5">
+                            
+                            <div>
+                              <label className="block text-sm font-bold text-gray-700 mb-2">1. סוג הפעולה הנדרשת:</label>
+                              <select 
+                                value={mode}
+                                onChange={(e) => setMode(e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-900"
+                              >
+                                <option value="transcribe_he">הקובץ דובר עברית ➔ צור כיתוביות בעברית (תמלול)</option>
+                                <option value="translate_en_he">הקובץ דובר אנגלית ➔ תרגם לעברית וצור כיתוביות</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-bold text-gray-700 mb-2">2. איכות זיהוי הקול (משפיע על המהירות):</label>
+                              <select 
+                                value={modelSize}
+                                onChange={(e) => setModelSize(e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700"
+                              >
+                                <option value="Xenova/whisper-tiny">איכות נמוכה (Tiny) - מהיר מאוד, ייתכנו שגיאות</option>
+                                <option value="Xenova/whisper-base">איכות בינונית (Base) - בחירה מומלצת למחשב ממוצע</option>
+                                <option value="Xenova/whisper-small">איכות גבוהה (Small) - מדויק מאוד אך איטי (דורש מחשב חזק)</option>
+                              </select>
+                              
+                              <div className="mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-sm text-gray-700 flex items-start gap-2">
+                                <Cpu size={16} className="mt-0.5 shrink-0 text-gray-500" />
+                                <span>
+                                  <strong className="block mb-1">מעבד רקע (Web Worker):</strong> 
+                                  המערכת כעת מעבירה את קבצי השמע לחישוב מחוץ למסך הראשי. הדפדפן ימשיך להגיב באופן חלק גם בזמן הורדת קבצים כבדים או ניתוח משפטים!
+                                </span>
+                              </div>
+                            </div>
+
+                          </div>
+                        )}
+
+                        {status === 'idle' && (
+                          <button 
+                            onClick={processFileLocal}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-5 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex justify-center items-center gap-3 text-xl"
+                          >
+                            <Cpu size={28} />
+                            התחל תהליך עיבוד ו/או תרגום
+                          </button>
+                        )}
+
+                        {status === 'processing' && (
+                          <div className="py-8 flex flex-col items-center text-center">
+                            <Loader2 className="animate-spin text-emerald-600 mb-6" size={56} />
+                            <h3 className="text-2xl font-bold text-gray-800 mb-3">{statusText}</h3>
+                            <p className="text-gray-500 mb-8 max-w-md">התהליך רץ בצורה חלקה בשרת הרקע של הדפדפן. אינך צריך לחשוש מ"תקיעות" או קפיאות מסך.</p>
+                            
+                            <div className="w-full max-w-lg bg-gray-200 rounded-full h-5 overflow-hidden shadow-inner border border-gray-300 relative">
+                              <div 
+                                className="bg-emerald-500 h-full rounded-full transition-all duration-300 ease-out relative flex items-center justify-end pr-2" 
+                                style={{ width: `${progress}%` }}
+                              >
+                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                {progress > 10 && <span className="text-xs font-bold text-white relative z-10">{progress}%</span>}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {status === 'error' && (
+                          <div className="py-4 animate-in fade-in">
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center gap-3 text-center">
+                              <AlertCircle className="text-red-500" size={40} />
+                              <div>
+                                <h4 className="font-bold text-red-800 text-lg mb-1">אירעה שגיאה</h4>
+                                <p className="text-red-700">{errorMessage}</p>
+                              </div>
+                              <button 
+                                onClick={() => setStatus('idle')}
+                                className="mt-4 bg-white border border-red-300 text-red-700 px-6 py-2 rounded-lg hover:bg-red-50 font-medium transition"
+                              >
+                                נסה קובץ אחר
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {status === 'complete' && (
+                          <div className="py-2 animate-in fade-in zoom-in duration-300">
+                            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-6 flex flex-col items-center text-center gap-4 mb-8">
+                              <div className="bg-emerald-500 p-3 rounded-full shadow-md text-white">
+                                <CheckCircle size={40} />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-emerald-900 text-2xl mb-2">הכיתוביות מוכנות!</h4>
+                                <p className="text-emerald-700 text-lg">עיבוד ופענוח הקובץ עברו בהצלחה.</p>
+                              </div>
+                            </div>
+
+                            <div className="bg-gray-900 rounded-2xl p-5 mb-8 shadow-inner relative group border border-gray-700">
+                              <div className="absolute top-0 right-0 bg-gray-700 text-emerald-300 text-xs px-4 py-1.5 rounded-bl-xl rounded-tr-2xl font-bold tracking-wide">
+                                תוצאת העיבוד האמיתית (SRT)
+                              </div>
+                              <pre className="text-gray-300 text-sm font-mono whitespace-pre-wrap overflow-y-auto max-h-56 mt-4 p-2 custom-scrollbar" dir="ltr">
+                                {srtResult}
+                              </pre>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-4">
+                              <button 
+                                onClick={downloadSrt}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-4 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all flex justify-center items-center gap-2 text-xl"
+                              >
+                                <Download size={24} />
+                                שמור כיתוביות למחשב
+                              </button>
+                              <button 
+                                onClick={resetApp}
+                                className="flex-1 bg-white border-2 border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-4 px-4 rounded-xl transition-all flex justify-center items-center gap-2 text-xl"
+                              >
+                                לעבד קובץ נוסף
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </main>
+            </div>
+          );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
