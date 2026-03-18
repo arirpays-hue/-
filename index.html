@@ -3,12 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>מחולל כיתוביות ותרגום AI מקומי (Web Worker)</title>
+    <title>AI Subtitle Generator | עיבוד מקומי</title>
     
-    <!-- טעינת Tailwind CSS לעיצוב -->
+    <!-- טעינת Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- טעינת מפת ייבוא (Import Map) עבור React ורכיביו -->
+    <!-- הגדרות עיצוב מותאמות אישית (Tailwind Config) -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81', 950: '#1e1b4b' },
+                        slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a', 950: '#020617' }
+                    },
+                    fontFamily: {
+                        sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace']
+                    },
+                    animation: {
+                        'gradient-x': 'gradient-x 3s ease infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        'gradient-x': {
+                            '0%, 100%': {
+                                'background-size': '200% 200%',
+                                'background-position': 'left center'
+                            },
+                            '50%': {
+                                'background-size': '200% 200%',
+                                'background-position': 'right center'
+                            },
+                        },
+                        'float': {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-5px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
     <script type="importmap">
         {
             "imports": {
@@ -19,35 +56,46 @@
         }
     </script>
     
-    <!-- טעינת Babel כדי לאפשר כתיבת קוד React (JSX) ישירות בדפדפן -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #374151; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6B7280; }
-        
-        /* אנימציית הבהוב לאזהרה */
-        @keyframes pulse-warning {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        body {
+            background-color: #f8fafc;
+            background-image: radial-gradient(at 0% 0%, hsla(238,100%,71%,0.04) 0px, transparent 50%),
+                              radial-gradient(at 100% 100%, hsla(286,100%,81%,0.04) 0px, transparent 50%);
+            background-attachment: fixed;
         }
-        .warning-glow { animation: pulse-warning 2s infinite; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .dropzone-active {
+            border-color: #6366f1;
+            background-color: rgba(99, 102, 241, 0.05);
+            transform: scale(1.01);
+        }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans">
+<body class="text-slate-800 font-sans min-h-screen selection:bg-indigo-200 selection:text-indigo-900">
     
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
         import React, { useState, useRef, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, ShieldCheck, Cpu, Lock, Trash2, Bookmark, AlertTriangle } from 'lucide-react';
+        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity } from 'lucide-react';
 
         // ==========================================
-        // קוד ה-Web Worker: פועל ברקע ולא תוקע את המסך!
+        // קוד ה-Web Worker - ללא שינוי (הורדה מקבילית מואצת)
         // ==========================================
         const workerCode = `
             self.Buffer = self.Buffer || { isBuffer: () => false };
@@ -57,13 +105,100 @@
             let transcriber = null;
             let translator = null;
             let currentModelSize = null;
+            let currentLoadingStep = 'transcribe_load';
+
+            async function chunkedFetch(url, options) {
+                if (!url.match(/\\.(onnx|bin|msgpack|safetensors)$/i)) {
+                    return fetch(url, options);
+                }
+
+                try {
+                    const headRes = await fetch(url, { ...options, method: 'HEAD' });
+                    if (!headRes.ok) return fetch(url, options);
+
+                    const contentLength = parseInt(headRes.headers.get('content-length'), 10);
+                    const acceptRanges = headRes.headers.get('accept-ranges');
+
+                    if (acceptRanges !== 'bytes' || !contentLength || contentLength < 5 * 1024 * 1024) {
+                        return fetch(url, options);
+                    }
+
+                    const numChunks = 20; 
+                    const chunkSize = Math.ceil(contentLength / numChunks);
+                    const promises = [];
+                    let fileLoaded = 0;
+
+                    for (let i = 0; i < numChunks; i++) {
+                        const start = i * chunkSize;
+                        const end = i === numChunks - 1 ? contentLength - 1 : (i + 1) * chunkSize - 1;
+
+                        const chunkPromise = fetch(url, {
+                            ...options,
+                            headers: {
+                                ...options.headers,
+                                'Range': 'bytes=' + start + '-' + end
+                            }
+                        }).then(async res => {
+                            if (!res.ok && res.status !== 206) throw new Error('Range request failed');
+                            
+                            const reader = res.body.getReader();
+                            const chunks = [];
+                            let chunkBytes = 0;
+
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                chunks.push(value);
+                                chunkBytes += value.length;
+                                fileLoaded += value.length;
+                                
+                                self.postMessage({
+                                    type: 'progress',
+                                    step: currentLoadingStep,
+                                    data: { status: 'progress', file: url, loaded: fileLoaded, total: contentLength }
+                                });
+                            }
+
+                            const assembledChunk = new Uint8Array(chunkBytes);
+                            let offset = 0;
+                            for (const c of chunks) {
+                                assembledChunk.set(c, offset);
+                                offset += c.length;
+                            }
+                            return { index: i, buffer: assembledChunk };
+                        });
+                        promises.push(chunkPromise);
+                    }
+
+                    const assembledChunks = await Promise.all(promises);
+                    assembledChunks.sort((a, b) => a.index - b.index);
+
+                    const finalBuffer = new Uint8Array(contentLength);
+                    let globalOffset = 0;
+                    for (const chunk of assembledChunks) {
+                        finalBuffer.set(chunk.buffer, globalOffset);
+                        globalOffset += chunk.buffer.byteLength;
+                    }
+
+                    return new Response(finalBuffer, {
+                        status: 200,
+                        headers: new Headers({
+                            'Content-Length': contentLength.toString(),
+                            'Content-Type': headRes.headers.get('content-type') || 'application/octet-stream'
+                        })
+                    });
+
+                } catch (e) {
+                    console.warn("הורדה מקבילית נכשלה, עובר להורדה רגילה:", e);
+                    return fetch(url, options);
+                }
+            }
 
             self.onmessage = async (e) => {
                 const { type, data } = e.data;
 
                 if (type === 'process') {
                     try {
-                        // 1. טעינת סביבת העבודה ברקע
                         if (!pipeline) {
                             self.postMessage({ type: 'status', text: 'מאתחל מנוע בינה מלאכותית ברקע...' });
                             const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/transformers.min.js');
@@ -75,9 +210,12 @@
                             env.useBrowserCache = true;
                             env.backends.onnx.wasm.numThreads = 1;
                             env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/';
+                            
+                            env.customFetch = chunkedFetch;
                         }
 
-                        // 2. טעינת מודל זיהוי קולי (Transcriber)
+                        currentLoadingStep = 'transcribe_load';
+
                         if (!transcriber || currentModelSize !== data.modelSize) {
                             if (transcriber && typeof transcriber.dispose === 'function') {
                                 await transcriber.dispose();
@@ -95,7 +233,6 @@
                         self.postMessage({ type: 'status', text: 'המודל מוכן! מבצע פענוח קולי ברקע (המסך נשאר פעיל)...' });
                         self.postMessage({ type: 'progress_percent', percent: 40 });
 
-                        // 3. פענוח שמע
                         const whisperLang = data.mode === 'translate_en_he' ? 'en' : 'he';
                         const output = await transcriber(data.audioData, {
                             language: whisperLang,
@@ -109,11 +246,12 @@
                             throw new Error('לא הצלחנו לזהות דיבור ברור בקובץ.');
                         }
 
-                        // 4. תרגום (אם נדרש)
                         if (data.mode === 'translate_en_he') {
                             self.postMessage({ type: 'status', text: 'הפענוח הסתיים! מכין מודל תרגום לעברית...' });
                             self.postMessage({ type: 'progress_percent', percent: 60 });
                             
+                            currentLoadingStep = 'translate_load';
+
                             if (!translator) {
                                 translator = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
                                     quantized: true,
@@ -137,7 +275,6 @@
                             }
                         }
 
-                        // 5. סיום והחזרת התוצאה למסך הראשי
                         self.postMessage({ type: 'complete', chunks: output.chunks });
 
                     } catch (err) {
@@ -152,7 +289,7 @@
         // ==========================================
         function App() {
           const [file, setFile] = useState(null);
-          const [status, setStatus] = useState('idle'); // idle, processing, complete, error
+          const [status, setStatus] = useState('idle'); 
           const [errorMessage, setErrorMessage] = useState('');
           const [progress, setProgress] = useState(0);
           const [statusText, setStatusText] = useState('');
@@ -161,16 +298,15 @@
           const [mode, setMode] = useState('transcribe_he');
           const [isPersistent, setIsPersistent] = useState(false);
           const [storageUsedMB, setStorageUsedMB] = useState('0.00');
+          const [isDragging, setIsDragging] = useState(false);
           
           const fileInputRef = useRef(null);
           const workerRef = useRef(null);
           
-          // ניהול מעקב הורדות עבור בר ההתקדמות (מנוהל מהממשק)
           const whisperDownloadsRef = useRef({});
           const nllbDownloadsRef = useRef({});
 
           useEffect(() => {
-            // יצירת ה-Worker ברגע שהאפליקציה עולה
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             const workerUrl = URL.createObjectURL(blob);
             workerRef.current = new Worker(workerUrl, { type: 'module' });
@@ -189,7 +325,7 @@
                     setSrtResult(srt);
                     setProgress(100);
                     setStatus('complete');
-                    calculateStorageUsed(); // רענון מד האחסון בסיום
+                    calculateStorageUsed(); 
                 } else if (type === 'error') {
                     console.error("Worker Error:", error);
                     setStatus('error');
@@ -197,7 +333,6 @@
                 }
             };
 
-            // בקשת אחסון קבוע
             async function initStorage() {
               if (navigator.storage && navigator.storage.persist) {
                 let persisted = await navigator.storage.persisted();
@@ -243,7 +378,7 @@
               if (totalSize > 0) {
                   const overallProgress = (totalLoaded / totalSize) * 100;
                   setProgress(baseProgress + Math.round(overallProgress * weight));
-                  setStatusText(`קורא/מוריד מודל ${modelName}... ${Math.round(overallProgress)}% (המסך פנוי לשימוש)`);
+                  setStatusText(`מוריד/קורא מודל ${modelName}... ${Math.round(overallProgress)}% (מואץ)`);
               }
           };
 
@@ -294,7 +429,6 @@
                 }
                 setStorageUsedMB('0.00');
                 
-                // אתחול מחדש של ה-Worker כדי לנקות לו את הזיכרון (RAM)
                 if (workerRef.current) workerRef.current.terminate();
                 const blob = new Blob([workerCode], { type: 'application/javascript' });
                 workerRef.current = new Worker(URL.createObjectURL(blob), { type: 'module' });
@@ -310,6 +444,13 @@
           const handleDragOver = (e) => {
             e.preventDefault();
             e.stopPropagation();
+            setIsDragging(true);
+          };
+
+          const handleDragLeave = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
           };
 
           const handleFileSelect = (e) => {
@@ -320,6 +461,7 @@
           const handleDrop = (e) => {
             e.preventDefault(); 
             e.stopPropagation();
+            setIsDragging(false);
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
               validateAndSetFile(e.dataTransfer.files[0]);
             }
@@ -335,7 +477,7 @@
             if (selectedFile.type.startsWith('video/') || selectedFile.type.startsWith('audio/') || selectedFile.name.match(/\.(mp4|mkv|avi|mpeg|mpga|m4a|wav|webm|mp3)$/i)) {
               setFile(selectedFile);
               setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0);
-              whisperDownloadsRef.current = {}; nllbDownloadsRef.current = {}; // איפוס מוני הורדות
+              whisperDownloadsRef.current = {}; nllbDownloadsRef.current = {}; 
             } else {
               setStatus('error');
               setErrorMessage('סוג הקובץ אינו נתמך. אנא העלה וידאו או שמע.');
@@ -369,7 +511,6 @@
               setProgress(5);
               setStatusText('מחלץ נתוני שמע מהקובץ (תהליך זה לוקח שניות בודדות)...');
 
-              // חילוץ האודיו (הפעולה היחידה שרצה בחוט הראשי)
               const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
               let arrayBuffer = await file.arrayBuffer();
               let decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
@@ -380,7 +521,6 @@
               setProgress(10);
               setStatusText('מעביר את השמע לתהליך רקע חכם (Web Worker)...');
 
-              // העברת הנתונים ל-Worker והעברת הבעלות על המערך כדי לחסוך RAM כפול
               workerRef.current.postMessage({
                   type: 'process',
                   data: {
@@ -388,9 +528,8 @@
                       modelSize: modelSize,
                       mode: mode
                   }
-              }, [audioData.buffer]); // Transferable Object - אופטימיזציה קריטית לזיכרון!
+              }, [audioData.buffer]);
 
-              // ניקוי משתנים מהזיכרון הראשי
               arrayBuffer = null;
               decodedAudio = null;
               audioData = null;
@@ -423,242 +562,351 @@
           };
 
           return (
-            <div dir="rtl" className="min-h-screen bg-gray-100 text-gray-800 font-sans p-4 md:p-8">
-              <main className="max-w-4xl mx-auto">
-                
-                {/* התראת אזהרה - ניסיוני */}
-                <div className="bg-red-50 border-2 border-red-500 p-4 mb-4 rounded-lg shadow-md flex items-start gap-4 warning-glow">
-                  <AlertTriangle className="text-red-600 mt-1 shrink-0" size={28} />
-                  <div>
-                    <h3 className="font-bold text-red-800 text-lg">⚠️ אזהרה: כלי ניסיוני (Beta)</h3>
-                    <p className="text-red-700 mt-1 font-medium leading-relaxed">
-                      האתר והטכנולוגיה עדיין בשלבי פיתוח וניסוי. המערכת עושה שימוש כבד במעבד (CPU) ובזיכרון המחשב שלך באופן מקומי. 
-                      <strong>השימוש במערכת הוא על אחריות המשתמש בלבד.</strong> 
-                      מומלץ לא להשתמש במחשבים ישנים או חלשים מאוד כדי למנע קריסות פתאומיות.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-emerald-600 rounded-t-2xl p-6 text-white text-center shadow-md relative overflow-hidden">
-                  <div className="absolute opacity-10 -right-10 -top-10">
-                    <Cpu size={150} />
-                  </div>
-                  <h1 className="text-3xl font-bold mb-3 flex items-center justify-center gap-3 relative z-10">
-                    <HardDrive size={32} />
-                    מחולל כיתוביות ותרגום מקומי
+            <div dir="rtl" className="min-h-screen pb-12 pt-6 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
+              
+              {/* Header area outside card */}
+              <div className="w-full max-w-4xl flex justify-between items-end mb-6">
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
+                    <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">AI Subtitles</span>
+                    <Sparkles className="text-indigo-500 animate-pulse" size={28} />
                   </h1>
-                  <p className="text-emerald-100 text-lg relative z-10">
-                    מבוסס תהליכי רקע (Worker) | מוגבל ל-100MB | אפס תקיעות דפדפן
-                  </p>
+                  <p className="text-slate-500 font-medium ml-1">פענוח ותרגום חכם שרץ כולו על המחשב שלך</p>
                 </div>
+                
+                {/* Storage Manager Chip */}
+                <div className="hidden sm:flex items-center gap-3 bg-white/60 backdrop-blur-md border border-slate-200/60 shadow-sm rounded-full py-1.5 px-4 hover:bg-white transition-colors group">
+                  <HardDrive size={16} className="text-indigo-500" />
+                  <span className="text-sm font-medium text-slate-600">אחסון מקומי: <span className="font-bold text-slate-800" dir="ltr">{storageUsedMB} MB</span></span>
+                  {parseFloat(storageUsedMB) > 0 && (
+                    <button 
+                      onClick={clearStorage}
+                      title="ניקוי מטמון"
+                      className="text-slate-400 hover:text-red-500 transition-colors mr-2 p-1 hover:bg-red-50 rounded-full"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
 
-                <div className="bg-white rounded-b-2xl shadow-xl overflow-hidden border border-gray-200">
+              {/* Main Card */}
+              <main className="w-full max-w-4xl bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative">
+                
+                {/* Decorative Top Gradient */}
+                <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient-x"></div>
+
+                <div className="p-6 sm:p-10">
                   
-                  <div className="bg-blue-50 border-b border-blue-100 p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-blue-100 p-2 rounded-full text-blue-700">
-                        <HardDrive size={20} />
-                      </div>
+                  {/* Warnings / Notices */}
+                  <div className="grid gap-4 mb-8">
+                    <div className="bg-amber-50/80 border border-amber-200/60 rounded-2xl p-4 flex items-start gap-4">
+                      <AlertTriangle className="text-amber-600 mt-0.5 shrink-0" size={24} />
                       <div>
-                        <h4 className="font-bold text-blue-900 text-sm">כספת מאובטחת (Cache)</h4>
-                        <p className="text-xs text-blue-700 font-medium mt-0.5">
-                          קבצים שמורים במחשב שלך תופסים: <span className="font-bold text-blue-800" dir="ltr">{storageUsedMB} MB</span>
+                        <h3 className="font-bold text-amber-900">כלי בפיתוח (Beta)</h3>
+                        <p className="text-amber-800 text-sm mt-1 leading-relaxed">
+                          המערכת מבצעת חישובים כבדים באופן מקומי ועשויה לאמץ מחשבים ישנים. פועל בטכנולוגיית Web Worker למניעת קפיאות ממשק. השימוש באחריותך.
                         </p>
                       </div>
                     </div>
                     
-                    <button 
-                      onClick={clearStorage}
-                      disabled={parseFloat(storageUsedMB) === 0}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                        parseFloat(storageUsedMB) > 0 
-                          ? 'bg-white border border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400' 
-                          : 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      <Trash2 size={16} />
-                      פנה מקום במחשב
-                    </button>
-                  </div>
-
-                  <div className="p-6 md:p-8">
-                    
-                    {status === 'idle' && !file && (
-                      <div 
-                        className="border-2 border-dashed border-emerald-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-emerald-50 transition-colors bg-gray-50 mb-8"
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <div className="bg-white p-4 rounded-full shadow-sm mb-4">
-                          <FileVideo size={56} className="text-emerald-500" />
+                    {!isPersistent && (
+                      <div className="bg-blue-50/80 border border-blue-200/60 rounded-2xl p-4 flex items-start gap-4">
+                        <Bookmark className="text-blue-600 mt-0.5 shrink-0" size={24} />
+                        <div>
+                          <h3 className="font-bold text-blue-900">טיפ לביצועים:</h3>
+                          <p className="text-blue-800 text-sm mt-1 leading-relaxed">
+                            הרץ את הקובץ דרך שרת מקומי (Localhost) כדי לשמור את המודלים בכספת הדפדפן ולחסוך הורדות חוזרות.
+                          </p>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-800 mb-2">גרור קובץ וידאו או שמע לכאן</h3>
-                        <p className="text-gray-500">תומך בקבצים של עד 100 מגה-בייט</p>
-                        <input 
-                          type="file" 
-                          ref={fileInputRef} 
-                          onChange={handleFileSelect} 
-                          className="hidden" 
-                          accept="video/*,audio/*"
-                        />
                       </div>
                     )}
+                  </div>
 
-                    {(file || status !== 'idle') && (
-                      <div className="bg-white rounded-2xl border border-gray-200 p-6 md:p-8 shadow-sm">
-                        
-                        <div className="flex flex-col md:flex-row items-center gap-5 mb-8 pb-8 border-b border-gray-100">
-                          <div className="bg-emerald-100 p-4 rounded-2xl text-emerald-600">
-                            {file?.type?.startsWith('audio') ? <FileAudio size={40} /> : <FileVideo size={40} />}
-                          </div>
-                          <div className="flex-1 text-center md:text-right overflow-hidden w-full">
-                            <h4 className="font-bold text-xl text-gray-800 truncate" dir="ltr">{file?.name}</h4>
-                            <p className="text-gray-500 mt-1 font-medium">
-                              {(file?.size / (1024 * 1024)).toFixed(2)} מגה-בייט • עיבוד רקע חכם
-                            </p>
-                          </div>
-                          {status === 'idle' && (
-                            <button 
-                              onClick={resetApp}
-                              className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-xl transition font-bold w-full md:w-auto"
-                            >
-                              בחר קובץ אחר
-                            </button>
-                          )}
+                  {/* IDLE STATE: File Selection */}
+                  {status === 'idle' && !file && (
+                    <div 
+                      className={`border-2 border-dashed rounded-[2rem] p-12 sm:p-16 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ease-in-out ${
+                        isDragging 
+                          ? 'border-indigo-500 bg-indigo-50/50 scale-[1.02] shadow-inner' 
+                          : 'border-slate-300 hover:border-indigo-400 bg-slate-50/50 hover:bg-slate-50/80'
+                      }`}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <div className={`p-4 rounded-2xl shadow-sm mb-5 transition-transform duration-300 ${isDragging ? 'bg-indigo-100 scale-110' : 'bg-white'}`}>
+                        <FileVideo size={48} className={isDragging ? 'text-indigo-600' : 'text-slate-400'} />
+                      </div>
+                      <h3 className="text-2xl font-bold text-slate-800 mb-2">
+                        {isDragging ? 'שחרר את הקובץ כאן!' : 'בחר קובץ וידאו או שמע'}
+                      </h3>
+                      <p className="text-slate-500 font-medium">או גרור אותו לתוך אזור זה</p>
+                      <p className="text-slate-400 text-sm mt-4 px-4 py-1.5 bg-slate-200/50 rounded-full">עד 100 מגה-בייט • תומך MP4, MP3, WAV ועוד</p>
+                      
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleFileSelect} 
+                        className="hidden" 
+                        accept="video/*,audio/*"
+                      />
+                    </div>
+                  )}
+
+                  {/* ACTIVE STATE: File Selected / Processing / Complete */}
+                  {(file || status !== 'idle') && (
+                    <div className="space-y-6">
+                      
+                      {/* File Card */}
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-center gap-5 relative overflow-hidden group transition-all">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                        <div className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-100 text-indigo-600">
+                          {file?.type?.startsWith('audio') ? <FileAudio size={28} /> : <FileVideo size={28} />}
                         </div>
-
-                        {status === 'idle' && (
-                          <div className="mb-6 bg-gray-50 p-6 rounded-xl border border-gray-200 space-y-5">
-                            
-                            <div>
-                              <label className="block text-sm font-bold text-gray-700 mb-2">1. סוג הפעולה הנדרשת:</label>
-                              <select 
-                                value={mode}
-                                onChange={(e) => setMode(e.target.value)}
-                                className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-900"
-                              >
-                                <option value="transcribe_he">הקובץ דובר עברית ➔ צור כיתוביות בעברית (תמלול)</option>
-                                <option value="translate_en_he">הקובץ דובר אנגלית ➔ תרגם לעברית וצור כיתוביות</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-sm font-bold text-gray-700 mb-2">2. איכות זיהוי הקול (משפיע על המהירות):</label>
-                              <select 
-                                value={modelSize}
-                                onChange={(e) => setModelSize(e.target.value)}
-                                className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700"
-                              >
-                                <option value="Xenova/whisper-tiny">איכות נמוכה (Tiny) - מהיר מאוד, ייתכנו שגיאות</option>
-                                <option value="Xenova/whisper-base">איכות בינונית (Base) - בחירה מומלצת למחשב ממוצע</option>
-                                <option value="Xenova/whisper-small">איכות גבוהה (Small) - מדויק מאוד אך איטי (דורש מחשב חזק)</option>
-                              </select>
-                              
-                              <div className="mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-sm text-gray-700 flex items-start gap-2">
-                                <Cpu size={16} className="mt-0.5 shrink-0 text-gray-500" />
-                                <span>
-                                  <strong className="block mb-1">מעבד רקע (Web Worker):</strong> 
-                                  המערכת כעת מעבירה את קבצי השמע לחישוב מחוץ למסך הראשי. הדפדפן ימשיך להגיב באופן חלק גם בזמן הורדת קבצים כבדים או ניתוח משפטים!
-                                </span>
-                              </div>
-                            </div>
-
+                        <div className="flex-1 text-center sm:text-right w-full">
+                          <h4 className="font-bold text-slate-800 text-lg truncate w-[90%] sm:w-auto" dir="ltr">{file?.name}</h4>
+                          <div className="flex items-center justify-center sm:justify-start gap-3 mt-1.5 text-sm text-slate-500">
+                            <span className="flex items-center gap-1 font-mono bg-slate-200/60 px-2 py-0.5 rounded-md">
+                              {(file?.size / (1024 * 1024)).toFixed(2)} MB
+                            </span>
+                            <span className="flex items-center gap-1 text-indigo-600 font-medium">
+                              <Lock size={14} /> עיבוד מקומי ובטוח
+                            </span>
                           </div>
-                        )}
-
+                        </div>
                         {status === 'idle' && (
                           <button 
-                            onClick={processFileLocal}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-5 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex justify-center items-center gap-3 text-xl"
+                            onClick={resetApp}
+                            className="text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 hover:text-slate-900 px-5 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto"
                           >
-                            <Cpu size={28} />
-                            התחל תהליך עיבוד ו/או תרגום
+                            החלף קובץ
                           </button>
                         )}
-
-                        {status === 'processing' && (
-                          <div className="py-8 flex flex-col items-center text-center">
-                            <Loader2 className="animate-spin text-emerald-600 mb-6" size={56} />
-                            <h3 className="text-2xl font-bold text-gray-800 mb-3">{statusText}</h3>
-                            <p className="text-gray-500 mb-8 max-w-md">התהליך רץ בצורה חלקה בשרת הרקע של הדפדפן. אינך צריך לחשוש מ"תקיעות" או קפיאות מסך.</p>
-                            
-                            <div className="w-full max-w-lg bg-gray-200 rounded-full h-5 overflow-hidden shadow-inner border border-gray-300 relative">
-                              <div 
-                                className="bg-emerald-500 h-full rounded-full transition-all duration-300 ease-out relative flex items-center justify-end pr-2" 
-                                style={{ width: `${progress}%` }}
-                              >
-                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                                {progress > 10 && <span className="text-xs font-bold text-white relative z-10">{progress}%</span>}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {status === 'error' && (
-                          <div className="py-4 animate-in fade-in">
-                            <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center gap-3 text-center">
-                              <AlertCircle className="text-red-500" size={40} />
-                              <div>
-                                <h4 className="font-bold text-red-800 text-lg mb-1">אירעה שגיאה</h4>
-                                <p className="text-red-700">{errorMessage}</p>
-                              </div>
-                              <button 
-                                onClick={() => setStatus('idle')}
-                                className="mt-4 bg-white border border-red-300 text-red-700 px-6 py-2 rounded-lg hover:bg-red-50 font-medium transition"
-                              >
-                                נסה קובץ אחר
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {status === 'complete' && (
-                          <div className="py-2 animate-in fade-in zoom-in duration-300">
-                            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-6 flex flex-col items-center text-center gap-4 mb-8">
-                              <div className="bg-emerald-500 p-3 rounded-full shadow-md text-white">
-                                <CheckCircle size={40} />
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-emerald-900 text-2xl mb-2">הכיתוביות מוכנות!</h4>
-                                <p className="text-emerald-700 text-lg">עיבוד ופענוח הקובץ עברו בהצלחה.</p>
-                              </div>
-                            </div>
-
-                            <div className="bg-gray-900 rounded-2xl p-5 mb-8 shadow-inner relative group border border-gray-700">
-                              <div className="absolute top-0 right-0 bg-gray-700 text-emerald-300 text-xs px-4 py-1.5 rounded-bl-xl rounded-tr-2xl font-bold tracking-wide">
-                                תוצאת העיבוד האמיתית (SRT)
-                              </div>
-                              <pre className="text-gray-300 text-sm font-mono whitespace-pre-wrap overflow-y-auto max-h-56 mt-4 p-2 custom-scrollbar" dir="ltr">
-                                {srtResult}
-                              </pre>
-                            </div>
-
-                            <div className="flex flex-col sm:flex-row gap-4">
-                              <button 
-                                onClick={downloadSrt}
-                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-4 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all flex justify-center items-center gap-2 text-xl"
-                              >
-                                <Download size={24} />
-                                שמור כיתוביות למחשב
-                              </button>
-                              <button 
-                                onClick={resetApp}
-                                className="flex-1 bg-white border-2 border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-4 px-4 rounded-xl transition-all flex justify-center items-center gap-2 text-xl"
-                              >
-                                לעבד קובץ נוסף
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    )}
-                  </div>
+
+                      {/* Settings Panel */}
+                      {status === 'idle' && (
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                          <h4 className="font-bold text-slate-800 mb-5 flex items-center gap-2">
+                            <Settings2 size={18} className="text-indigo-500" />
+                            הגדרות עיבוד
+                          </h4>
+                          
+                          <div className="grid md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                              <label className="block text-sm font-semibold text-slate-700">סוג הפעולה:</label>
+                              <div className="relative">
+                                <select 
+                                  value={mode}
+                                  onChange={(e) => setMode(e.target.value)}
+                                  className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-slate-700 transition-colors shadow-sm"
+                                >
+                                  <option value="transcribe_he">דיבור בעברית ➔ כיתוביות בעברית</option>
+                                  <option value="translate_en_he">דיבור באנגלית ➔ תרגום לעברית</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500">
+                                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="block text-sm font-semibold text-slate-700">איכות המודל:</label>
+                              <div className="relative">
+                                <select 
+                                  value={modelSize}
+                                  onChange={(e) => setModelSize(e.target.value)}
+                                  className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-slate-700 transition-colors shadow-sm"
+                                >
+                                  <option value="Xenova/whisper-tiny">בסיסי (Tiny) - מהיר מאוד לניסיון</option>
+                                  <option value="Xenova/whisper-base">מומלץ (Base) - איזון טוב לרוב המחשבים</option>
+                                  <option value="Xenova/whisper-small">מדויק (Small) - דורש מחשב חזק</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500">
+                                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-6 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-start gap-3">
+                            <Zap size={20} className="mt-0.5 shrink-0 text-indigo-500" />
+                            <p className="text-sm text-indigo-900 leading-relaxed">
+                              <strong className="font-bold">מנוע מואץ:</strong> המערכת חותכת את המודלים ומורידה אותם דרך 20 חיבורים במקביל. תהליכי הפענוח רצים ברקע כדי לשמור על דפדפן מהיר וחלק.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Button */}
+                      {status === 'idle' && (
+                        <button 
+                          onClick={processFileLocal}
+                          className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 px-4 rounded-2xl shadow-[0_4px_14px_0_rgb(0,0,0,0.2)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 transition-all duration-200 flex justify-center items-center gap-3 text-xl group relative overflow-hidden"
+                        >
+                          <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                          <Activity className="group-hover:animate-pulse" size={24} />
+                          התחל פענוח AI
+                        </button>
+                      )}
+
+                      {/* Processing State */}
+                      {status === 'processing' && (
+                        <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 flex flex-col items-center text-center relative overflow-hidden shadow-sm">
+                          <div className="absolute inset-0 bg-indigo-50/30"></div>
+                          
+                          <div className="relative z-10">
+                            <div className="relative mb-8 flex justify-center">
+                              <div className="absolute inset-0 bg-indigo-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+                              <div className="bg-white p-4 rounded-full shadow-lg border border-indigo-100 relative">
+                                <Loader2 className="animate-spin text-indigo-600" size={40} />
+                              </div>
+                            </div>
+                            
+                            <h3 className="text-2xl font-bold text-slate-800 mb-3">{statusText}</h3>
+                            <p className="text-slate-500 font-medium mb-10 max-w-md mx-auto">
+                              אל תסגור את הדף. הפעולה מתבצעת באופן מקומי לחלוטין על גבי המעבד שלך.
+                            </p>
+                            
+                            <div className="w-full max-w-lg mx-auto">
+                              <div className="flex justify-between text-sm font-bold text-slate-600 mb-2">
+                                <span>התקדמות כללית</span>
+                                <span dir="ltr">{progress}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden shadow-inner p-0.5 border border-slate-200/60">
+                                <div 
+                                  className="h-full rounded-full bg-gradient-to-l from-indigo-500 to-purple-500 relative transition-all duration-300 ease-out" 
+                                  style={{ width: `${progress}%` }}
+                                >
+                                  <div className="absolute inset-0 w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[stripes_1s_linear_infinite]"></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error State */}
+                      {status === 'error' && (
+                        <div className="animate-fade-in bg-white border border-red-200 rounded-2xl p-8 flex flex-col items-center gap-4 text-center shadow-sm relative overflow-hidden">
+                          <div className="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
+                          <div className="bg-red-50 p-4 rounded-full">
+                            <AlertCircle className="text-red-500" size={40} />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-slate-800 text-xl mb-2">אופס, משהו השתבש</h4>
+                            <p className="text-slate-600">{errorMessage}</p>
+                          </div>
+                          <button 
+                            onClick={() => setStatus('idle')}
+                            className="mt-4 bg-white border border-slate-300 text-slate-700 px-8 py-2.5 rounded-xl hover:bg-slate-50 hover:text-slate-900 font-bold transition-all shadow-sm"
+                          >
+                            נסה שוב
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Complete State */}
+                      {status === 'complete' && (
+                        <div className="animate-fade-in space-y-6">
+                          
+                          <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-5 shadow-lg text-white relative overflow-hidden">
+                            <div className="absolute -right-6 -top-6 opacity-10">
+                              <CheckCircle size={120} />
+                            </div>
+                            <div className="bg-white/20 p-3.5 rounded-2xl backdrop-blur-md border border-white/30 shrink-0 relative z-10">
+                              <CheckCircle size={32} className="text-white" />
+                            </div>
+                            <div className="relative z-10">
+                              <h4 className="font-bold text-2xl mb-1.5">הכיתוביות מוכנות!</h4>
+                              <p className="text-emerald-50 font-medium">קובץ הוידאו פוענח בהצלחה על ידי הבינה המלאכותית.</p>
+                            </div>
+                            <div className="mr-auto shrink-0 relative z-10 pt-4 sm:pt-0 w-full sm:w-auto">
+                                <button 
+                                  onClick={downloadSrt}
+                                  className="w-full sm:w-auto bg-white text-emerald-700 hover:bg-emerald-50 hover:scale-105 font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2"
+                                >
+                                  <Download size={20} />
+                                  שמור קובץ (.srt)
+                                </button>
+                            </div>
+                          </div>
+
+                          <div className="bg-[#0f172a] rounded-2xl overflow-hidden shadow-xl border border-slate-800 relative group">
+                            {/* Terminal Header */}
+                            <div className="bg-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-800">
+                              <div className="flex gap-2">
+                                <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+                                <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                                <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+                              </div>
+                              <div className="flex items-center gap-2 text-slate-400 text-xs font-mono">
+                                <FileText size={14} />
+                                output.srt
+                              </div>
+                            </div>
+                            {/* Terminal Content */}
+                            <div className="p-5">
+                                <pre className="text-slate-300 text-sm font-mono whitespace-pre-wrap overflow-y-auto max-h-64 custom-scrollbar selection:bg-slate-700 selection:text-white" dir="ltr">
+                                  {srtResult}
+                                </pre>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-center pt-2">
+                            <button 
+                              onClick={resetApp}
+                              className="bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-bold py-3 px-8 rounded-xl transition-all shadow-sm"
+                            >
+                              עבד קובץ נוסף
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </main>
+              
+              {/* Mobile Storage Manager (Visible only on small screens) */}
+              <div className="mt-8 sm:hidden flex items-center justify-center gap-3 bg-white/60 backdrop-blur-md border border-slate-200/60 shadow-sm rounded-full py-2 px-5">
+                <HardDrive size={16} className="text-indigo-500" />
+                <span className="text-sm font-medium text-slate-600">מטמון: <span className="font-bold text-slate-800" dir="ltr">{storageUsedMB} MB</span></span>
+                {parseFloat(storageUsedMB) > 0 && (
+                  <button 
+                    onClick={clearStorage}
+                    className="text-slate-400 hover:text-red-500 ml-2"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+
             </div>
           );
         }
+
+        // --- Custom Animations ---
+        const style = document.createElement('style');
+        style.innerHTML = `
+          @keyframes shimmer {
+            100% { transform: translateX(100%); }
+          }
+          @keyframes stripes {
+            from { background-position: 1rem 0; }
+            to { background-position: 0 0; }
+          }
+          .animate-fade-in {
+            animation: fadeIn 0.4s ease-out;
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `;
+        document.head.appendChild(style);
 
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
