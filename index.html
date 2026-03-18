@@ -613,25 +613,25 @@
           // מסך הנעילה (יוצג אם הדפדפן לא אושר)
           if (!isAuthenticated) {
             return (
-              <div dir="rtl" className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center relative overflow-hidden">
+              <div dir="rtl" className="min-h-screen bg-slate-900 flex items-center justify-center p-4 sm:p-6">
+                  <div className="bg-white rounded-[2rem] p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center relative overflow-hidden mx-auto">
                       <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
-                      <div className="bg-indigo-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Lock className="text-indigo-600" size={36} />
+                      <div className="bg-indigo-50 w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6">
+                        <Lock className="text-indigo-600 w-8 h-8 sm:w-10 sm:h-10" />
                       </div>
-                      <h2 className="text-2xl font-extrabold text-slate-800 mb-2">אזור פרטי</h2>
-                      <p className="text-slate-500 mb-8 text-sm font-medium">הזן את קוד הגישה כדי לאשר דפדפן זה לשימוש קבוע.</p>
+                      <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800 mb-2">אזור פרטי</h2>
+                      <p className="text-slate-500 mb-6 sm:mb-8 text-xs sm:text-sm font-medium px-2">הזן את קוד הגישה כדי לאשר דפדפן זה לשימוש קבוע.</p>
                       <form onSubmit={handleLogin}>
                           <input
                               type="password"
                               value={pinInput}
                               onChange={(e) => { setPinInput(e.target.value); setPinError(false); }}
-                              className={`w-full text-center text-3xl tracking-[0.5em] p-4 border-2 ${pinError ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-200 focus:border-indigo-500 bg-slate-50'} rounded-2xl mb-4 outline-none transition-all`}
+                              className={`w-full text-center text-2xl sm:text-3xl tracking-[0.3em] sm:tracking-[0.5em] p-3 sm:p-4 border-2 ${pinError ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-200 focus:border-indigo-500 bg-slate-50'} rounded-xl sm:rounded-2xl mb-4 outline-none transition-all`}
                               placeholder="****"
                               autoFocus
                           />
-                          {pinError && <p className="text-red-500 text-sm mb-4 font-bold animate-bounce">קוד שגוי, נסה שוב.</p>}
-                          <button type="submit" className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 rounded-2xl transition-colors shadow-lg mt-2">
+                          {pinError && <p className="text-red-500 text-xs sm:text-sm mb-4 font-bold animate-bounce">קוד שגוי, נסה שוב.</p>}
+                          <button type="submit" className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-3 sm:py-4 rounded-xl sm:rounded-2xl transition-colors shadow-lg mt-2 text-sm sm:text-base">
                               אמת דפדפן והיכנס
                           </button>
                       </form>
@@ -641,16 +641,16 @@
           }
 
           return (
-            <div dir="rtl" className="min-h-screen pb-12 pt-6 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
+            <div dir="rtl" className="min-h-screen pb-8 pt-4 px-3 sm:pb-12 sm:pt-6 sm:px-6 lg:px-8 flex flex-col items-center">
               
               {/* Header area outside card */}
-              <div className="w-full max-w-4xl flex justify-between items-end mb-6">
-                <div className="flex flex-col gap-1">
-                  <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
+              <div className="w-full max-w-4xl flex flex-col sm:flex-row justify-between items-center sm:items-end gap-4 sm:gap-0 mb-5 sm:mb-6 text-center sm:text-right">
+                <div className="flex flex-col gap-1 sm:gap-1.5 items-center sm:items-start">
+                  <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 sm:gap-3">
                     <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">AI Subtitles</span>
-                    <Sparkles className="text-indigo-500 animate-pulse" size={28} />
+                    <Sparkles className="text-indigo-500 animate-pulse w-6 h-6 sm:w-8 sm:h-8" />
                   </h1>
-                  <p className="text-slate-500 font-medium ml-1">פענוח ותרגום חכם שרץ כולו על המחשב שלך (תומך עד 2GB)</p>
+                  <p className="text-slate-500 font-medium text-xs sm:text-sm md:text-base px-2 sm:px-0">פענוח ותרגום חכם שרץ כולו על המחשב שלך (תומך עד 2GB)</p>
                 </div>
                 
                 {/* Storage Manager Chip */}
@@ -675,26 +675,26 @@
                 {/* Decorative Top Gradient */}
                 <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient-x"></div>
 
-                <div className="p-6 sm:p-10">
+                <div className="p-4 sm:p-6 md:p-10">
                   
                   {/* Warnings / Notices */}
-                  <div className="grid gap-4 mb-8">
-                    <div className="bg-amber-50/80 border border-amber-200/60 rounded-2xl p-4 flex items-start gap-4">
-                      <AlertTriangle className="text-amber-600 mt-0.5 shrink-0" size={24} />
+                  <div className="grid gap-3 sm:gap-4 mb-6 sm:mb-8">
+                    <div className="bg-amber-50/80 border border-amber-200/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-2 sm:gap-4">
+                      <AlertTriangle className="text-amber-600 sm:mt-0.5 shrink-0" size={24} />
                       <div>
-                        <h3 className="font-bold text-amber-900">כלי בפיתוח (Beta)</h3>
-                        <p className="text-amber-800 text-sm mt-1 leading-relaxed">
+                        <h3 className="font-bold text-amber-900 text-sm sm:text-base">כלי בפיתוח (Beta)</h3>
+                        <p className="text-amber-800 text-xs sm:text-sm mt-1 leading-relaxed">
                           המערכת מבצעת חישובים כבדים באופן מקומי ועשויה לאמץ מחשבים ישנים. פועל בטכנולוגיית Web Worker למניעת קפיאות ממשק. השימוש באחריותך.
                         </p>
                       </div>
                     </div>
                     
                     {!isPersistent && (
-                      <div className="bg-blue-50/80 border border-blue-200/60 rounded-2xl p-4 flex items-start gap-4">
-                        <Bookmark className="text-blue-600 mt-0.5 shrink-0" size={24} />
+                      <div className="bg-blue-50/80 border border-blue-200/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-2 sm:gap-4">
+                        <Bookmark className="text-blue-600 sm:mt-0.5 shrink-0" size={24} />
                         <div>
-                          <h3 className="font-bold text-blue-900">טיפ לביצועים:</h3>
-                          <p className="text-blue-800 text-sm mt-1 leading-relaxed">
+                          <h3 className="font-bold text-blue-900 text-sm sm:text-base">טיפ לביצועים:</h3>
+                          <p className="text-blue-800 text-xs sm:text-sm mt-1 leading-relaxed">
                             הרץ את הקובץ דרך שרת מקומי (Localhost) כדי לשמור את המודלים בכספת הדפדפן ולחסוך הורדות חוזרות.
                           </p>
                         </div>
@@ -705,7 +705,7 @@
                   {/* IDLE STATE: File Selection */}
                   {status === 'idle' && !file && (
                     <div 
-                      className={`border-2 border-dashed rounded-[2rem] p-12 sm:p-16 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ease-in-out ${
+                      className={`border-2 border-dashed rounded-[1.5rem] sm:rounded-[2rem] p-8 sm:p-12 md:p-16 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ease-in-out ${
                         isDragging 
                           ? 'border-indigo-500 bg-indigo-50/50 scale-[1.02] shadow-inner' 
                           : 'border-slate-300 hover:border-indigo-400 bg-slate-50/50 hover:bg-slate-50/80'
@@ -715,14 +715,14 @@
                       onDrop={handleDrop}
                       onClick={() => fileInputRef.current?.click()}
                     >
-                      <div className={`p-4 rounded-2xl shadow-sm mb-5 transition-transform duration-300 ${isDragging ? 'bg-indigo-100 scale-110' : 'bg-white'}`}>
-                        <FileVideo size={48} className={isDragging ? 'text-indigo-600' : 'text-slate-400'} />
+                      <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm mb-4 sm:mb-5 transition-transform duration-300 ${isDragging ? 'bg-indigo-100 scale-110' : 'bg-white'}`}>
+                        <FileVideo className={`w-10 h-10 sm:w-12 sm:h-12 ${isDragging ? 'text-indigo-600' : 'text-slate-400'}`} />
                       </div>
-                      <h3 className="text-2xl font-bold text-slate-800 mb-2">
+                      <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 mb-1 sm:mb-2">
                         {isDragging ? 'שחרר את הקובץ כאן!' : 'בחר קובץ וידאו או שמע'}
                       </h3>
-                      <p className="text-slate-500 font-medium">או גרור אותו לתוך אזור זה</p>
-                      <p className="text-slate-400 text-sm mt-4 px-4 py-1.5 bg-slate-200/50 rounded-full">עד 2GB (2000MB) • תומך MP4, MP3, WAV ועוד</p>
+                      <p className="text-slate-500 font-medium text-xs sm:text-base">או גרור אותו לתוך אזור זה</p>
+                      <p className="text-slate-400 text-[10px] sm:text-sm mt-4 px-3 sm:px-4 py-1.5 bg-slate-200/50 rounded-full">עד 2GB (2000MB) • תומך MP4, MP3, WAV ועוד</p>
                       
                       <input 
                         type="file" 
@@ -736,35 +736,35 @@
 
                   {/* ACTIVE STATE: File Selected / Processing / Complete */}
                   {(file || status !== 'idle') && (
-                    <div className="space-y-6">
+                    <div className="space-y-4 sm:space-y-6">
                       
                       {/* File Card */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-center gap-5 relative overflow-hidden group transition-all">
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl p-3 sm:p-6 flex flex-col sm:flex-row items-center gap-3 sm:gap-5 relative overflow-hidden group transition-all">
                         <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                        <div className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-100 text-indigo-600">
-                          {file?.type?.startsWith('audio') ? <FileAudio size={28} /> : <FileVideo size={28} />}
+                        <div className="bg-white p-2.5 sm:p-3.5 rounded-lg sm:rounded-xl shadow-sm border border-slate-100 text-indigo-600 shrink-0">
+                          {file?.type?.startsWith('audio') ? <FileAudio className="w-6 h-6 sm:w-7 sm:h-7" /> : <FileVideo className="w-6 h-6 sm:w-7 sm:h-7" />}
                         </div>
-                        <div className="flex-1 text-center sm:text-right w-full">
-                          <h4 className="font-bold text-slate-800 text-lg truncate w-[90%] sm:w-auto" dir="ltr">{file?.name}</h4>
-                          <div className="flex items-center justify-center sm:justify-start gap-3 mt-1.5 text-sm text-slate-500">
+                        <div className="flex-1 text-center sm:text-right w-full min-w-0">
+                          <h4 className="font-bold text-slate-800 text-sm sm:text-lg truncate w-full" dir="ltr">{file?.name}</h4>
+                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3 mt-1.5 text-[10px] sm:text-sm text-slate-500">
                             <span className="flex items-center gap-1 font-mono bg-slate-200/60 px-2 py-0.5 rounded-md">
                               {(file?.size / (1024 * 1024)).toFixed(2)} MB
                             </span>
                             <span className="flex items-center gap-1 text-indigo-600 font-medium">
-                              <Lock size={14} /> עיבוד מקומי ובטוח
+                              <Lock size={12} className="sm:w-[14px] sm:h-[14px]" /> עיבוד מקומי
                             </span>
                           </div>
                           {file?.size > 200 * 1024 * 1024 && (
-                            <p className="text-amber-600 text-xs font-medium mt-2 flex items-center justify-center sm:justify-start gap-1">
-                              <AlertTriangle size={12} />
-                              קובץ כבד: חילוץ השמע בתחילת הפעולה עשוי לקחת מעט זמן.
+                            <p className="text-amber-600 text-[10px] sm:text-xs font-medium mt-2 flex items-center justify-center sm:justify-start gap-1">
+                              <AlertTriangle size={12} className="shrink-0" />
+                              קובץ כבד: החילוץ עשוי לקחת מעט זמן.
                             </p>
                           )}
                         </div>
                         {status === 'idle' && (
                           <button 
                             onClick={resetApp}
-                            className="text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 hover:text-slate-900 px-5 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto"
+                            className="text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 hover:text-slate-900 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl transition-all shadow-sm w-full sm:w-auto mt-2 sm:mt-0"
                           >
                             החלף קובץ
                           </button>
@@ -773,63 +773,63 @@
 
                       {/* Settings Panel */}
                       {status === 'idle' && (
-                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                          <h4 className="font-bold text-slate-800 mb-5 flex items-center gap-2">
-                            <Settings2 size={18} className="text-indigo-500" />
+                        <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm">
+                          <h4 className="font-bold text-slate-800 text-sm sm:text-base mb-4 sm:mb-5 flex items-center gap-2">
+                            <Settings2 size={18} className="text-indigo-500 shrink-0" />
                             הגדרות עיבוד
                           </h4>
                           
-                          <div className="grid md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                              <label className="block text-sm font-semibold text-slate-700">סוג הפעולה:</label>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                            <div className="space-y-1.5 sm:space-y-2">
+                              <label className="block text-xs sm:text-sm font-semibold text-slate-700">סוג הפעולה:</label>
                               <div className="relative">
                                 <select 
                                   value={mode}
                                   onChange={(e) => setMode(e.target.value)}
-                                  className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-slate-700 transition-colors shadow-sm"
+                                  className="w-full pl-3 pr-8 sm:pr-10 py-2.5 sm:py-3 border border-slate-300 rounded-lg sm:rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-xs sm:text-sm md:text-base text-slate-700 transition-colors shadow-sm"
                                 >
                                   <option value="transcribe_he">דיבור בעברית ➔ כיתוביות בעברית</option>
                                   <option value="translate_en_he">דיבור באנגלית ➔ תרגום לעברית</option>
                                 </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500">
-                                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 sm:pr-3 text-slate-500">
+                                  <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="space-y-2">
-                              <label className="block text-sm font-semibold text-slate-700">איכות המודל:</label>
+                            <div className="space-y-1.5 sm:space-y-2">
+                              <label className="block text-xs sm:text-sm font-semibold text-slate-700">איכות המודל:</label>
                               <div className="relative">
                                 <select 
                                   value={modelSize}
                                   onChange={(e) => setModelSize(e.target.value)}
-                                  className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-slate-700 transition-colors shadow-sm"
+                                  className="w-full pl-3 pr-8 sm:pr-10 py-2.5 sm:py-3 border border-slate-300 rounded-lg sm:rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-xs sm:text-sm md:text-base text-slate-700 transition-colors shadow-sm"
                                 >
-                                  <option value="Xenova/whisper-tiny">בסיסי (Tiny) - סופר מהיר (מומלץ לביצועים)</option>
+                                  <option value="Xenova/whisper-tiny">בסיסי (Tiny) - סופר מהיר (מומלץ)</option>
                                   <option value="Xenova/whisper-base">רגיל (Base) - איזון בין מהירות לדיוק</option>
                                   <option value="Xenova/whisper-small">מדויק (Small) - כבד יותר</option>
                                 </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500">
-                                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 sm:pr-3 text-slate-500">
+                                  <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                                 </div>
                               </div>
                             </div>
                           </div>
 
-                          <div className="mt-6 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-start gap-3">
-                            <Zap size={20} className="mt-0.5 shrink-0 text-indigo-500" />
-                            <div className="text-sm text-indigo-900 leading-relaxed">
-                              <strong className="font-bold flex items-center gap-2 mb-1">
+                          <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg sm:rounded-xl flex items-start gap-2 sm:gap-3">
+                            <Zap className="mt-0.5 shrink-0 text-indigo-500 w-4 h-4 sm:w-5 sm:h-5" />
+                            <div className="text-xs sm:text-sm text-indigo-900 leading-relaxed">
+                              <strong className="font-bold flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
                                 מאיץ AI (דור 3 - יציב)
                                 {hasWebGPU ? (
-                                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs border border-green-200 font-bold shadow-sm">🚀 WebGPU פעיל</span>
+                                    <span className="bg-green-100 text-green-700 px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs border border-green-200 font-bold shadow-sm">🚀 WebGPU פעיל</span>
                                 ) : (
-                                    <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded text-xs border border-slate-300">⚙️ עיבוד מעבד (CPU)</span>
+                                    <span className="bg-slate-200 text-slate-600 px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs border border-slate-300">⚙️ עיבוד מעבד (CPU)</span>
                                 )}
                               </strong>
                               {hasWebGPU 
                                 ? 'מצב "האצת חומרה" מופעל! המערכת משתמשת בכרטיס המסך (WebGPU) שלך בגרסה היציבה ביותר, ותתאים את הקידוד אוטומטית לקבלת ביצועים מקסימליים ללא שגיאות.' 
-                                : 'המערכת מנצלת את כל ליבות המעבד עם גרסה 3 החדשה. למהירות מקסימלית באמת, פתח בדפדפן חדיש התומך ב-WebGPU (כמו Chrome).'}
+                                : 'המערכת מנצלת את כל ליבות המעבד עם גרסה 3 החדשה. למהירות מקסימלית באמת, פתח בדפדפן חדיש התומך ב-WebGPU.'}
                             </div>
                           </div>
                         </div>
@@ -839,38 +839,38 @@
                       {status === 'idle' && (
                         <button 
                           onClick={processFileLocal}
-                          className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 px-4 rounded-2xl shadow-[0_4px_14px_0_rgb(0,0,0,0.2)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 transition-all duration-200 flex justify-center items-center gap-3 text-xl group relative overflow-hidden"
+                          className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-3 sm:py-4 px-4 rounded-xl sm:rounded-2xl shadow-[0_4px_14px_0_rgb(0,0,0,0.2)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 transition-all duration-200 flex justify-center items-center gap-2 sm:gap-3 text-lg sm:text-xl group relative overflow-hidden"
                         >
                           <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
-                          <Activity className="group-hover:animate-pulse" size={24} />
+                          <Activity className="group-hover:animate-pulse w-5 h-5 sm:w-6 sm:h-6" />
                           התחל פענוח AI
                         </button>
                       )}
 
                       {/* Processing State */}
                       {status === 'processing' && (
-                        <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 flex flex-col items-center text-center relative overflow-hidden shadow-sm">
+                        <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-6 sm:p-8 md:p-12 flex flex-col items-center text-center relative overflow-hidden shadow-sm">
                           <div className="absolute inset-0 bg-indigo-50/30"></div>
                           
-                          <div className="relative z-10">
-                            <div className="relative mb-8 flex justify-center">
+                          <div className="relative z-10 w-full">
+                            <div className="relative mb-6 sm:mb-8 flex justify-center">
                               <div className="absolute inset-0 bg-indigo-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
-                              <div className="bg-white p-4 rounded-full shadow-lg border border-indigo-100 relative">
-                                <Loader2 className="animate-spin text-indigo-600" size={40} />
+                              <div className="bg-white p-3 sm:p-4 rounded-full shadow-lg border border-indigo-100 relative">
+                                <Loader2 className="animate-spin text-indigo-600 w-8 h-8 sm:w-10 sm:h-10" />
                               </div>
                             </div>
                             
-                            <h3 className="text-2xl font-bold text-slate-800 mb-3">{statusText}</h3>
-                            <p className="text-slate-500 font-medium mb-10 max-w-md mx-auto">
+                            <h3 className="text-lg sm:text-2xl font-bold text-slate-800 mb-2 sm:mb-3">{statusText}</h3>
+                            <p className="text-slate-500 font-medium text-xs sm:text-sm mb-6 sm:mb-10 max-w-md mx-auto">
                               אל תסגור את הדף. הפעולה מתבצעת באופן מקומי לחלוטין על גבי המעבד שלך.
                             </p>
                             
                             <div className="w-full max-w-lg mx-auto">
-                              <div className="flex justify-between text-sm font-bold text-slate-600 mb-2">
+                              <div className="flex justify-between text-xs sm:text-sm font-bold text-slate-600 mb-1.5 sm:mb-2 px-1">
                                 <span>התקדמות כללית</span>
                                 <span dir="ltr">{progress}%</span>
                               </div>
-                              <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden shadow-inner p-0.5 border border-slate-200/60">
+                              <div className="w-full bg-slate-100 rounded-full h-3 sm:h-4 overflow-hidden shadow-inner p-0.5 border border-slate-200/60">
                                 <div 
                                   className="h-full rounded-full bg-gradient-to-l from-indigo-500 to-purple-500 relative transition-all duration-300 ease-out" 
                                   style={{ width: `${progress}%` }}
@@ -885,18 +885,18 @@
 
                       {/* Error State */}
                       {status === 'error' && (
-                        <div className="animate-fade-in bg-white border border-red-200 rounded-2xl p-8 flex flex-col items-center gap-4 text-center shadow-sm relative overflow-hidden">
+                        <div className="animate-fade-in bg-white border border-red-200 rounded-xl sm:rounded-2xl p-6 sm:p-8 flex flex-col items-center gap-3 sm:gap-4 text-center shadow-sm relative overflow-hidden">
                           <div className="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
-                          <div className="bg-red-50 p-4 rounded-full">
-                            <AlertCircle className="text-red-500" size={40} />
+                          <div className="bg-red-50 p-3 sm:p-4 rounded-full">
+                            <AlertCircle className="text-red-500 w-8 h-8 sm:w-10 sm:h-10" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-slate-800 text-xl mb-2">אופס, משהו השתבש</h4>
-                            <p className="text-slate-600">{errorMessage}</p>
+                            <h4 className="font-bold text-slate-800 text-lg sm:text-xl mb-1 sm:mb-2">אופס, משהו השתבש</h4>
+                            <p className="text-slate-600 text-xs sm:text-sm">{errorMessage}</p>
                           </div>
                           <button 
                             onClick={() => setStatus('idle')}
-                            className="mt-4 bg-white border border-slate-300 text-slate-700 px-8 py-2.5 rounded-xl hover:bg-slate-50 hover:text-slate-900 font-bold transition-all shadow-sm"
+                            className="mt-2 sm:mt-4 bg-white border border-slate-300 text-slate-700 px-6 sm:px-8 py-2 sm:py-2.5 rounded-lg sm:rounded-xl hover:bg-slate-50 hover:text-slate-900 font-bold transition-all shadow-sm text-sm sm:text-base"
                           >
                             נסה שוב
                           </button>
@@ -905,55 +905,55 @@
 
                       {/* Complete State */}
                       {status === 'complete' && (
-                        <div className="animate-fade-in space-y-6">
+                        <div className="animate-fade-in space-y-4 sm:space-y-6">
                           
-                          <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-5 shadow-lg text-white relative overflow-hidden">
-                            <div className="absolute -right-6 -top-6 opacity-10">
-                              <CheckCircle size={120} />
+                          <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl sm:rounded-2xl p-5 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-4 sm:gap-5 shadow-lg text-white relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 sm:-right-6 sm:-top-6 opacity-10">
+                              <CheckCircle className="w-24 h-24 sm:w-[120px] sm:h-[120px]" />
                             </div>
-                            <div className="bg-white/20 p-3.5 rounded-2xl backdrop-blur-md border border-white/30 shrink-0 relative z-10">
-                              <CheckCircle size={32} className="text-white" />
+                            <div className="bg-white/20 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl backdrop-blur-md border border-white/30 shrink-0 relative z-10">
+                              <CheckCircle className="text-white w-6 h-6 sm:w-8 sm:h-8" />
                             </div>
                             <div className="relative z-10">
-                              <h4 className="font-bold text-2xl mb-1.5">הכיתוביות מוכנות!</h4>
-                              <p className="text-emerald-50 font-medium">קובץ הוידאו פוענח בהצלחה על ידי הבינה המלאכותית.</p>
+                              <h4 className="font-bold text-xl sm:text-2xl mb-1 sm:mb-1.5">הכיתוביות מוכנות!</h4>
+                              <p className="text-emerald-50 font-medium text-xs sm:text-sm">קובץ הוידאו פוענח בהצלחה על ידי הבינה המלאכותית.</p>
                             </div>
-                            <div className="mr-auto shrink-0 relative z-10 pt-4 sm:pt-0 w-full sm:w-auto">
+                            <div className="sm:mr-auto shrink-0 relative z-10 pt-2 sm:pt-0 w-full sm:w-auto">
                                 <button 
                                   onClick={downloadSrt}
-                                  className="w-full sm:w-auto bg-white text-emerald-700 hover:bg-emerald-50 hover:scale-105 font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2"
+                                  className="w-full sm:w-auto bg-white text-emerald-700 hover:bg-emerald-50 hover:scale-105 font-bold py-2.5 sm:py-3 px-5 sm:px-6 rounded-lg sm:rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 text-sm sm:text-base"
                                 >
-                                  <Download size={20} />
+                                  <Download size={18} className="sm:w-5 sm:h-5" />
                                   שמור קובץ (.srt)
                                 </button>
                             </div>
                           </div>
 
-                          <div className="bg-[#0f172a] rounded-2xl overflow-hidden shadow-xl border border-slate-800 relative group">
+                          <div className="bg-[#0f172a] rounded-xl sm:rounded-2xl overflow-hidden shadow-xl border border-slate-800 relative group">
                             {/* Terminal Header */}
-                            <div className="bg-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-800">
-                              <div className="flex gap-2">
-                                <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
-                                <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                                <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+                            <div className="bg-slate-900 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between border-b border-slate-800">
+                              <div className="flex gap-1.5 sm:gap-2">
+                                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-500/80"></div>
+                                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-yellow-500/80"></div>
+                                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-500/80"></div>
                               </div>
-                              <div className="flex items-center gap-2 text-slate-400 text-xs font-mono">
-                                <FileText size={14} />
+                              <div className="flex items-center gap-1.5 sm:gap-2 text-slate-400 text-[10px] sm:text-xs font-mono">
+                                <FileText size={12} className="sm:w-[14px] sm:h-[14px]" />
                                 output.srt
                               </div>
                             </div>
                             {/* Terminal Content */}
-                            <div className="p-5">
-                                <pre className="text-slate-300 text-sm font-mono whitespace-pre-wrap overflow-y-auto max-h-64 custom-scrollbar selection:bg-slate-700 selection:text-white" dir="ltr">
+                            <div className="p-3 sm:p-5">
+                                <pre className="text-slate-300 text-[10px] sm:text-sm font-mono whitespace-pre-wrap overflow-y-auto max-h-48 sm:max-h-64 custom-scrollbar selection:bg-slate-700 selection:text-white leading-relaxed" dir="ltr">
                                   {srtResult}
                                 </pre>
                             </div>
                           </div>
 
-                          <div className="flex justify-center pt-2">
+                          <div className="flex justify-center pt-1 sm:pt-2">
                             <button 
                               onClick={resetApp}
-                              className="bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-bold py-3 px-8 rounded-xl transition-all shadow-sm"
+                              className="bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-bold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl transition-all shadow-sm w-full sm:w-auto text-sm sm:text-base"
                             >
                               עבד קובץ נוסף
                             </button>
@@ -966,15 +966,15 @@
               </main>
               
               {/* Mobile Storage Manager (Visible only on small screens) */}
-              <div className="mt-8 sm:hidden flex items-center justify-center gap-3 bg-white/60 backdrop-blur-md border border-slate-200/60 shadow-sm rounded-full py-2 px-5">
-                <HardDrive size={16} className="text-indigo-500" />
-                <span className="text-sm font-medium text-slate-600">מטמון: <span className="font-bold text-slate-800" dir="ltr">{storageUsedMB} MB</span></span>
+              <div className="mt-6 sm:hidden flex items-center justify-center gap-2 bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm rounded-full py-2 px-4">
+                <HardDrive size={14} className="text-indigo-500" />
+                <span className="text-xs font-medium text-slate-600">מטמון: <span className="font-bold text-slate-800" dir="ltr">{storageUsedMB} MB</span></span>
                 {parseFloat(storageUsedMB) > 0 && (
                   <button 
                     onClick={clearStorage}
-                    className="text-slate-400 hover:text-red-500 ml-2"
+                    className="text-slate-400 hover:text-red-500 ml-1.5 p-1 hover:bg-red-50 rounded-full"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>
