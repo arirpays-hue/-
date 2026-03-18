@@ -107,7 +107,6 @@
             let currentModelSize = null;
             let currentLoadingStep = 'transcribe_load';
             let deviceType = 'wasm';
-            let modelDtype = 'q8';
 
             async function chunkedFetch(url, options) {
                 if (!url.match(/\\.(onnx|bin|msgpack|safetensors)$/i)) {
@@ -202,8 +201,8 @@
                 if (type === 'process') {
                     try {
                         if (!pipeline) {
-                            self.postMessage({ type: 'status', text: 'מאתחל מנוע בינה מלאכותית (דור 3)...' });
-                            const transformers = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.0/dist/transformers.min.js');
+                            self.postMessage({ type: 'status', text: 'מאתחל מנוע בינה מלאכותית (דור 3 יציב)...' });
+                            const transformers = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0/dist/transformers.min.js');
                             pipeline = transformers.pipeline;
                             env = transformers.env;
                             
@@ -213,17 +212,13 @@
                             
                             if (self.navigator.gpu) {
                                 deviceType = 'webgpu';
-                                // שימוש בטכנולוגיית הקצה 4-bit! מכווץ דרמטית את רוחב הפס הנדרש מכרטיס המסך ומשלש את המהירות
-                                modelDtype = 'q4f16'; 
-                                self.postMessage({ type: 'status', text: '🚀 האצת חומרה (WebGPU + Q4) הופעלה בהצלחה!' });
+                                self.postMessage({ type: 'status', text: '🚀 האצת חומרה (WebGPU) הופעלה בהצלחה!' });
                             } else {
                                 deviceType = 'wasm';
-                                // שימוש ב-4-bit גם עבור מעבדים רגילים למהירות שיא
-                                modelDtype = 'q8'; 
                                 const cores = self.navigator.hardwareConcurrency || 4;
                                 env.backends.onnx.wasm.numThreads = Math.min(cores, 8); 
                                 env.backends.onnx.wasm.simd = true; 
-                                env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.0/dist/';
+                                env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0/dist/';
                             }
                             
                             env.customFetch = chunkedFetch;
@@ -239,7 +234,6 @@
                             
                             transcriber = await pipeline('automatic-speech-recognition', data.modelSize, {
                                 device: deviceType,
-                                dtype: modelDtype,
                                 progress_callback: (prog) => {
                                     self.postMessage({ type: 'progress', step: 'transcribe_load', data: prog });
                                 }
@@ -319,7 +313,7 @@
           const [progress, setProgress] = useState(0);
           const [statusText, setStatusText] = useState('');
           const [srtResult, setSrtResult] = useState('');
-          const [modelSize, setModelSize] = useState('onnx-community/whisper-tiny'); // שימוש במודלים מותאמים לדור 3
+          const [modelSize, setModelSize] = useState('Xenova/whisper-tiny'); // מודל קל ומהיר כברירת מחדל
           const [mode, setMode] = useState('transcribe_he');
           const [isPersistent, setIsPersistent] = useState(false);
           const [storageUsedMB, setStorageUsedMB] = useState('0.00');
@@ -811,9 +805,9 @@
                                   onChange={(e) => setModelSize(e.target.value)}
                                   className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-slate-700 transition-colors shadow-sm"
                                 >
-                                  <option value="onnx-community/whisper-tiny">בסיסי (Tiny) - סופר מהיר (מומלץ לביצועים)</option>
-                                  <option value="onnx-community/whisper-base">רגיל (Base) - איזון בין מהירות לדיוק</option>
-                                  <option value="onnx-community/whisper-small">מדויק (Small) - כבד יותר</option>
+                                  <option value="Xenova/whisper-tiny">בסיסי (Tiny) - סופר מהיר (מומלץ לביצועים)</option>
+                                  <option value="Xenova/whisper-base">רגיל (Base) - איזון בין מהירות לדיוק</option>
+                                  <option value="Xenova/whisper-small">מדויק (Small) - כבד יותר</option>
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500">
                                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
@@ -826,16 +820,16 @@
                             <Zap size={20} className="mt-0.5 shrink-0 text-indigo-500" />
                             <div className="text-sm text-indigo-900 leading-relaxed">
                               <strong className="font-bold flex items-center gap-2 mb-1">
-                                מאיץ AI (דור 3 - מהירות קצה)
+                                מאיץ AI (דור 3 - יציב)
                                 {hasWebGPU ? (
-                                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs border border-green-200 font-bold shadow-sm">🚀 WebGPU פעיל בקידוד 4-Bit</span>
+                                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs border border-green-200 font-bold shadow-sm">🚀 WebGPU פעיל</span>
                                 ) : (
-                                    <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded text-xs border border-slate-300">⚙️ מעבד (CPU) בקידוד כיווץ</span>
+                                    <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded text-xs border border-slate-300">⚙️ עיבוד מעבד (CPU)</span>
                                 )}
                               </strong>
                               {hasWebGPU 
-                                ? 'מצב "מהירות קצה" מופעל! המערכת משתמשת כעת בטכנולוגיית Q4 (4-Bit Quantization). המודל נדחס בעשרות אחוזים כדי לאפשר לכרטיס המסך ללעוס את הנתונים במהירות שיא שלא נראתה כמותה.' 
-                                : 'המערכת מנצלת את כל ליבות המעבד עם משקלים מכווצים. למהירות מקסימלית באמת (פי 10 ויותר), פתח בדפדפן חדיש התומך ב-WebGPU (כמו Chrome).'}
+                                ? 'מצב "האצת חומרה" מופעל! המערכת משתמשת בכרטיס המסך (WebGPU) שלך בגרסה היציבה ביותר, ותתאים את הקידוד אוטומטית לקבלת ביצועים מקסימליים ללא שגיאות.' 
+                                : 'המערכת מנצלת את כל ליבות המעבד עם גרסה 3 החדשה. למהירות מקסימלית באמת, פתח בדפדפן חדיש התומך ב-WebGPU (כמו Chrome).'}
                             </div>
                           </div>
                         </div>
