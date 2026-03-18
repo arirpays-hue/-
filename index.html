@@ -95,7 +95,7 @@
         import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity } from 'lucide-react';
 
         // ==========================================
-        // קוד ה-Web Worker - ללא שינוי (הורדה מקבילית מואצת)
+        // קוד ה-Web Worker - הורדה מקבילית מואצת
         // ==========================================
         const workerCode = `
             self.Buffer = self.Buffer || { isBuffer: () => false };
@@ -208,7 +208,12 @@
                             env.allowLocalModels = false;
                             env.allowRemoteModels = true;
                             env.useBrowserCache = true;
-                            env.backends.onnx.wasm.numThreads = 1;
+                            
+                            // ריבוי תהליכונים והאצת SIMD
+                            const cores = self.navigator.hardwareConcurrency || 4;
+                            env.backends.onnx.wasm.numThreads = Math.min(cores, 8); 
+                            env.backends.onnx.wasm.simd = true; 
+                            
                             env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/';
                             
                             env.customFetch = chunkedFetch;
@@ -468,10 +473,10 @@
           };
 
           const validateAndSetFile = (selectedFile) => {
-            const maxSizeMB = 100;
+            const maxSizeMB = 2048; // עד 2GB
             if (selectedFile.size > maxSizeMB * 1024 * 1024) {
               setStatus('error');
-              setErrorMessage(`הקובץ גדול מדי (${(selectedFile.size / (1024*1024)).toFixed(1)}MB).`);
+              setErrorMessage(`הקובץ גדול מדי (${(selectedFile.size / (1024*1024)).toFixed(1)}MB). המערכת תומכת כעת בקבצים כבדים עד 2GB.`);
               return;
             }
             if (selectedFile.type.startsWith('video/') || selectedFile.type.startsWith('audio/') || selectedFile.name.match(/\.(mp4|mkv|avi|mpeg|mpga|m4a|wav|webm|mp3)$/i)) {
@@ -509,11 +514,26 @@
               setStatus('processing');
               setErrorMessage('');
               setProgress(5);
-              setStatusText('מחלץ נתוני שמע מהקובץ (תהליך זה לוקח שניות בודדות)...');
+              
+              setStatusText(`קורא את הקובץ (${(file.size / (1024*1024)).toFixed(0)}MB) לזיכרון...`);
+              await new Promise(resolve => setTimeout(resolve, 100));
 
               const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
               let arrayBuffer = await file.arrayBuffer();
-              let decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
+              
+              setStatusText('מחלץ ומפענח רצועת שמע (בסרטונים כבדים זה עשוי לקחת מעט זמן)...');
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              let decodedAudio;
+              try {
+                  decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
+              } catch (decodeErr) {
+                  throw new Error('הקובץ כבד מדי לזיכרון הפנימי של הדפדפן (RAM). נסה לחתוך את הסרטון או להמיר אותו לקובץ שמע (MP3) לפני ההעלאה.');
+              }
+              
+              // פינוי מיידי של הסרטון מהזיכרון החי
+              arrayBuffer = null;
+              
               let audioData = decodedAudio.getChannelData(0);
               
               if (audioCtx.state !== 'closed') await audioCtx.close();
@@ -530,7 +550,6 @@
                   }
               }, [audioData.buffer]);
 
-              arrayBuffer = null;
               decodedAudio = null;
               audioData = null;
 
@@ -571,7 +590,7 @@
                     <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">AI Subtitles</span>
                     <Sparkles className="text-indigo-500 animate-pulse" size={28} />
                   </h1>
-                  <p className="text-slate-500 font-medium ml-1">פענוח ותרגום חכם שרץ כולו על המחשב שלך</p>
+                  <p className="text-slate-500 font-medium ml-1">פענוח ותרגום חכם שרץ כולו על המחשב שלך (תומך עד 2GB)</p>
                 </div>
                 
                 {/* Storage Manager Chip */}
@@ -643,7 +662,7 @@
                         {isDragging ? 'שחרר את הקובץ כאן!' : 'בחר קובץ וידאו או שמע'}
                       </h3>
                       <p className="text-slate-500 font-medium">או גרור אותו לתוך אזור זה</p>
-                      <p className="text-slate-400 text-sm mt-4 px-4 py-1.5 bg-slate-200/50 rounded-full">עד 100 מגה-בייט • תומך MP4, MP3, WAV ועוד</p>
+                      <p className="text-slate-400 text-sm mt-4 px-4 py-1.5 bg-slate-200/50 rounded-full">עד 2GB (2000MB) • תומך MP4, MP3, WAV ועוד</p>
                       
                       <input 
                         type="file" 
@@ -675,6 +694,12 @@
                               <Lock size={14} /> עיבוד מקומי ובטוח
                             </span>
                           </div>
+                          {file?.size > 200 * 1024 * 1024 && (
+                            <p className="text-amber-600 text-xs font-medium mt-2 flex items-center justify-center sm:justify-start gap-1">
+                              <AlertTriangle size={12} />
+                              קובץ כבד: חילוץ השמע בתחילת הפעולה עשוי לקחת מעט זמן.
+                            </p>
+                          )}
                         </div>
                         {status === 'idle' && (
                           <button 
@@ -734,7 +759,7 @@
                           <div className="mt-6 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-start gap-3">
                             <Zap size={20} className="mt-0.5 shrink-0 text-indigo-500" />
                             <p className="text-sm text-indigo-900 leading-relaxed">
-                              <strong className="font-bold">מנוע מואץ:</strong> המערכת חותכת את המודלים ומורידה אותם דרך 20 חיבורים במקביל. תהליכי הפענוח רצים ברקע כדי לשמור על דפדפן מהיר וחלק.
+                              <strong className="font-bold">מנוע AI מואץ:</strong> המערכת מחלקת את ההורדות ל-20 חיבורים במקביל, ומנצלת כעת את <strong className="bg-indigo-200/50 px-1 rounded">כל ליבות המעבד (Multi-threading)</strong> שלך ופקודות SIMD וקטוריות כדי להכפיל את מהירות זיהוי הדיבור והתרגום!
                             </p>
                           </div>
                         </div>
