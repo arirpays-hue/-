@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Subtitle Generator | עיבוד מקומי</title>
+    <title>AI Subtitle Generator | עיבוד מקומי מתקדם</title>
     
     <!-- טעינת Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,6 +11,7 @@
     <!-- הגדרות עיצוב מותאמות אישית (Tailwind Config) -->
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
@@ -24,21 +25,20 @@
                     animation: {
                         'gradient-x': 'gradient-x 3s ease infinite',
                         'float': 'float 3s ease-in-out infinite',
+                        'sound-wave': 'sound-wave 1.2s ease-in-out infinite'
                     },
                     keyframes: {
                         'gradient-x': {
-                            '0%, 100%': {
-                                'background-size': '200% 200%',
-                                'background-position': 'left center'
-                            },
-                            '50%': {
-                                'background-size': '200% 200%',
-                                'background-position': 'right center'
-                            },
+                            '0%, 100%': { 'background-size': '200% 200%', 'background-position': 'left center' },
+                            '50%': { 'background-size': '200% 200%', 'background-position': 'right center' },
                         },
                         'float': {
                             '0%, 100%': { transform: 'translateY(0)' },
                             '50%': { transform: 'translateY(-5px)' },
+                        },
+                        'sound-wave': {
+                            '0%, 100%': { height: '10%' },
+                            '50%': { height: '100%' },
                         }
                     }
                 }
@@ -51,7 +51,10 @@
             "imports": {
                 "react": "https://esm.sh/react@18.2.0",
                 "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-                "lucide-react": "https://esm.sh/lucide-react@0.263.0"
+                "lucide-react": "https://esm.sh/lucide-react@0.263.0",
+                "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
+                "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
+                "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
             }
         }
     </script>
@@ -64,25 +67,26 @@
             background-image: radial-gradient(at 0% 0%, hsla(238,100%,71%,0.04) 0px, transparent 50%),
                               radial-gradient(at 100% 100%, hsla(286,100%,81%,0.04) 0px, transparent 50%);
             background-attachment: fixed;
+            transition: background-color 0.3s ease;
         }
 
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        html.dark body {
+            background-color: #0f172a;
+            background-image: radial-gradient(at 0% 0%, hsla(238,100%,71%,0.08) 0px, transparent 50%),
+                              radial-gradient(at 100% 100%, hsla(286,100%,81%,0.08) 0px, transparent 50%);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6366f1; }
         
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-        }
-
-        .dropzone-active {
-            border-color: #6366f1;
-            background-color: rgba(99, 102, 241, 0.05);
-            transform: scale(1.01);
-        }
+        /* Sound Wave Animation Delay Utilities */
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+        .delay-4 { animation-delay: 0.4s; }
+        .delay-5 { animation-delay: 0.5s; }
     </style>
 </head>
 <body class="text-slate-800 font-sans min-h-screen selection:bg-indigo-200 selection:text-indigo-900">
@@ -92,10 +96,36 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useRef, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity } from 'lucide-react';
+        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity, LogOut, Users, Mail, Copy, Check, AlignLeft, CheckSquare, List, Key, Settings, Moon, Sun, Globe, Wand2, Type, FileJson } from 'lucide-react';
+
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
+        import { getFirestore, doc, setDoc, getDocs, collection, query } from 'firebase/firestore';
+
+        // Initialize Firebase
+        let app, auth, db, appId;
+        let isFirebaseDummy = false;
+        try {
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+                apiKey: "", authDomain: "dummy.firebaseapp.com", projectId: "dummy", storageBucket: "dummy.appspot.com", messagingSenderId: "1", appId: "1"
+            };
+            
+            // Check if we are in a dummy/preview environment to prevent network errors
+            if (!firebaseConfig.apiKey || firebaseConfig.projectId === "dummy") {
+                isFirebaseDummy = true;
+            } else {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+            }
+            appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        } catch(e) { 
+            console.error("Firebase init error:", e); 
+            isFirebaseDummy = true;
+        }
 
         // ==========================================
-        // קוד ה-Web Worker - הורדה מקבילית מואצת
+        // קוד ה-Web Worker - הורדה מקומית יציבה
         // ==========================================
         const workerCode = `
             self.Buffer = self.Buffer || { isBuffer: () => false };
@@ -106,25 +136,45 @@
             let translator = null;
             let currentModelSize = null;
             let currentLoadingStep = 'transcribe_load';
-            let deviceType = 'wasm';
+
+            // --- טיפול בשגיאות מערכת קריטיות בתוך תהליך הרקע ---
+            self.onerror = function(e) {
+                self.postMessage({ type: 'error', error: 'קריסת מערכת (חריגת זיכרון או שגיאת דפדפן): ' + e.message });
+            };
+            self.onunhandledrejection = function(e) {
+                self.postMessage({ type: 'error', error: 'פעולת רקע נכשלה: ' + (e.reason && e.reason.message ? e.reason.message : 'שגיאה לא ידועה') });
+            };
+
+            // מנגנון ניסיונות חוזרים למניעת קריסות רשת (Exponential Backoff)
+            async function fetchWithRetry(url, options, retries = 3) {
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const res = await fetch(url, options);
+                        if (res.ok || res.status === 206) return res;
+                        if (i === retries - 1) throw new Error('Status: ' + res.status);
+                    } catch (err) {
+                        if (i === retries - 1) throw err;
+                        await new Promise(r => setTimeout(r, 1500 * (i + 1))); 
+                    }
+                }
+            }
 
             async function chunkedFetch(url, options) {
                 if (!url.match(/\\.(onnx|bin|msgpack|safetensors)$/i)) {
-                    return fetch(url, options);
+                    return fetchWithRetry(url, options);
                 }
 
                 try {
-                    const headRes = await fetch(url, { ...options, method: 'HEAD' });
-                    if (!headRes.ok) return fetch(url, options);
-
+                    const headRes = await fetchWithRetry(url, { ...options, method: 'HEAD' });
                     const contentLength = parseInt(headRes.headers.get('content-length'), 10);
                     const acceptRanges = headRes.headers.get('accept-ranges');
 
                     if (acceptRanges !== 'bytes' || !contentLength || contentLength < 5 * 1024 * 1024) {
-                        return fetch(url, options);
+                        return fetchWithRetry(url, options);
                     }
 
-                    const numChunks = 20; 
+                    // פיצול ההורדה בהתאם להגדרות המשתמש או ברירת מחדל
+                    const numChunks = self.customNumChunks || 16; 
                     const chunkSize = Math.ceil(contentLength / numChunks);
                     const promises = [];
                     let fileLoaded = 0;
@@ -133,15 +183,13 @@
                         const start = i * chunkSize;
                         const end = i === numChunks - 1 ? contentLength - 1 : (i + 1) * chunkSize - 1;
 
-                        const chunkPromise = fetch(url, {
+                        const chunkPromise = fetchWithRetry(url, {
                             ...options,
                             headers: {
                                 ...options.headers,
                                 'Range': 'bytes=' + start + '-' + end
                             }
                         }).then(async res => {
-                            if (!res.ok && res.status !== 206) throw new Error('Range request failed');
-                            
                             const reader = res.body.getReader();
                             const chunks = [];
                             let chunkBytes = 0;
@@ -190,8 +238,8 @@
                     });
 
                 } catch (e) {
-                    console.warn("הורדה מקבילית נכשלה, עובר להורדה רגילה:", e);
-                    return fetch(url, options);
+                    console.warn("הורדה מקבילית נכשלה, עובר להורדה רגילה עמידה:", e);
+                    return fetchWithRetry(url, options);
                 }
             }
 
@@ -199,10 +247,18 @@
                 const { type, data } = e.data;
 
                 if (type === 'process') {
+                    self.customNumChunks = data.numChunks || 16;
                     try {
                         if (!pipeline) {
-                            self.postMessage({ type: 'status', text: 'מאתחל מנוע בינה מלאכותית (דור 3 יציב)...' });
-                            const transformers = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0/dist/transformers.min.js');
+                            self.postMessage({ type: 'status', text: 'מאתחל מנוע בינה מלאכותית ברקע...' });
+                            
+                            let transformers;
+                            try {
+                                transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/transformers.min.js');
+                            } catch (importErr) {
+                                throw new Error('שגיאה בטעינת ספריות ליבה. ייתכן ויש חסימת רשת.');
+                            }
+
                             pipeline = transformers.pipeline;
                             env = transformers.env;
                             
@@ -210,16 +266,11 @@
                             env.allowRemoteModels = true;
                             env.useBrowserCache = true;
                             
-                            if (self.navigator.gpu) {
-                                deviceType = 'webgpu';
-                                self.postMessage({ type: 'status', text: '🚀 האצת חומרה (WebGPU) הופעלה בהצלחה!' });
-                            } else {
-                                deviceType = 'wasm';
-                                const cores = self.navigator.hardwareConcurrency || 4;
-                                env.backends.onnx.wasm.numThreads = Math.min(cores, 8); 
-                                env.backends.onnx.wasm.simd = true; 
-                                env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0/dist/';
-                            }
+                            const cores = self.navigator.hardwareConcurrency || 4;
+                            env.backends.onnx.wasm.numThreads = Math.min(cores, 8); 
+                            env.backends.onnx.wasm.simd = true; 
+                            
+                            env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/';
                             
                             env.customFetch = chunkedFetch;
                         }
@@ -232,18 +283,26 @@
                             }
                             currentModelSize = data.modelSize;
                             
-                            transcriber = await pipeline('automatic-speech-recognition', data.modelSize, {
-                                device: deviceType,
-                                progress_callback: (prog) => {
-                                    self.postMessage({ type: 'progress', step: 'transcribe_load', data: prog });
-                                }
-                            });
+                            try {
+                                transcriber = await pipeline('automatic-speech-recognition', data.modelSize, {
+                                    quantized: true,
+                                    progress_callback: (prog) => {
+                                        self.postMessage({ type: 'progress', step: 'transcribe_load', data: prog });
+                                    }
+                                });
+                            } catch (err) {
+                                throw new Error('שגיאה בהורדת מודל הדיבור. נסה לנקות את המטמון ולוודא חיבור אינטרנט יציב.');
+                            }
                         }
 
                         self.postMessage({ type: 'status', text: 'המודל מוכן! מבצע פענוח קולי ברקע (המסך נשאר פעיל)...' });
                         self.postMessage({ type: 'progress_percent', percent: 40 });
 
-                        const whisperLang = data.mode === 'translate_en_he' ? 'en' : 'he';
+                        let whisperLang = 'he';
+                        if (data.mode === 'transcribe_en' || data.mode === 'translate_en_he') {
+                            whisperLang = 'en';
+                        }
+
                         const output = await transcriber(data.audioData, {
                             language: whisperLang,
                             task: 'transcribe',
@@ -256,29 +315,35 @@
                             throw new Error('לא הצלחנו לזהות דיבור ברור בקובץ.');
                         }
 
-                        if (data.mode === 'translate_en_he') {
-                            self.postMessage({ type: 'status', text: 'הפענוח הסתיים! מכין מודל תרגום לעברית...' });
+                        const needsTranslation = data.mode.startsWith('translate_');
+
+                        if (needsTranslation) {
+                            self.postMessage({ type: 'status', text: 'הפענוח הסתיים! מכין מודל תרגום...' });
                             self.postMessage({ type: 'progress_percent', percent: 60 });
                             
-                            currentLoadingStep = 'translate_load';
-
                             if (!translator) {
-                                translator = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
-                                    device: 'wasm',
-                                    dtype: 'q8',
-                                    progress_callback: (prog) => {
-                                        self.postMessage({ type: 'progress', step: 'translate_load', data: prog });
-                                    }
-                                });
+                                try {
+                                    translator = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
+                                        quantized: true,
+                                        progress_callback: (prog) => {
+                                            self.postMessage({ type: 'progress', step: 'translate_load', data: prog });
+                                        }
+                                    });
+                                } catch (err) {
+                                    throw new Error('שגיאה בהורדת מודל התרגום.');
+                                }
                             }
 
                             self.postMessage({ type: 'status', text: 'מודל תרגום מוכן! מתרגם משפטים ברקע...' });
                             
+                            const src_lang = data.mode === 'translate_en_he' ? 'eng_Latn' : 'heb_Hebr';
+                            const tgt_lang = data.mode === 'translate_en_he' ? 'heb_Hebr' : 'eng_Latn';
+
                             for (let i = 0; i < output.chunks.length; i++) {
                                 self.postMessage({ type: 'progress_percent', percent: 80 + Math.round((i / output.chunks.length) * 20) });
                                 const translated = await translator(output.chunks[i].text, {
-                                    src_lang: 'eng_Latn',
-                                    tgt_lang: 'heb_Hebr'
+                                    src_lang: src_lang,
+                                    tgt_lang: tgt_lang
                                 });
                                 if (translated && translated.length > 0) {
                                     output.chunks[i].text = translated[0].translation_text;
@@ -299,13 +364,9 @@
         // אפליקציית ה-React הראשית
         // ==========================================
         function App() {
-          const SECRET_PIN = "1432"; // 🔒 שנה את המספר הזה לסיסמה הסודית שתרצה
-          const [isAuthenticated, setIsAuthenticated] = useState(() => {
-              // בדיקה האם הדפדפן הזה כבר אושר בעבר
-              return localStorage.getItem('is_my_browser') === 'true';
-          });
-          const [pinInput, setPinInput] = useState('');
-          const [pinError, setPinError] = useState(false);
+          const [user, setUser] = useState(null);
+          const [isAuthLoading, setIsAuthLoading] = useState(true);
+          const [adminStats, setAdminStats] = useState({ total: 0, currentMonth: 0 });
 
           const [file, setFile] = useState(null);
           const [status, setStatus] = useState('idle'); 
@@ -313,12 +374,33 @@
           const [progress, setProgress] = useState(0);
           const [statusText, setStatusText] = useState('');
           const [srtResult, setSrtResult] = useState('');
-          const [modelSize, setModelSize] = useState('Xenova/whisper-tiny'); // מודל קל ומהיר כברירת מחדל
+          const [modelSize, setModelSize] = useState('Xenova/whisper-base');
           const [mode, setMode] = useState('transcribe_he');
           const [isPersistent, setIsPersistent] = useState(false);
           const [storageUsedMB, setStorageUsedMB] = useState('0.00');
           const [isDragging, setIsDragging] = useState(false);
-          const [hasWebGPU, setHasWebGPU] = useState(false);
+          const [copied, setCopied] = useState(false);
+          
+          // Gemini API States
+          const [llmResult, setLlmResult] = useState('');
+          const [isLlmLoading, setIsLlmLoading] = useState(false);
+          const [llmError, setLlmError] = useState('');
+          const [activeLlmAction, setActiveLlmAction] = useState(null);
+          const [geminiApiKey, setGeminiApiKey] = useState('');
+          const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+          const [tempApiKey, setTempApiKey] = useState('');
+          const [pendingAction, setPendingAction] = useState(null);
+          
+          // Theme & Additional Settings States
+          const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+          const [numChunks, setNumChunks] = useState(() => parseInt(localStorage.getItem('numChunks')) || 16);
+          const [exportFormat, setExportFormat] = useState(() => localStorage.getItem('exportFormat') || 'srt');
+          const [editorFontSize, setEditorFontSize] = useState(() => localStorage.getItem('editorFontSize') || '15px');
+          
+          const [showSettingsModal, setShowSettingsModal] = useState(false);
+          const [workerSession, setWorkerSession] = useState(0);
+          const processingSessionRef = useRef(0); // רפרנס למניעת התנגשויות של תהליכים ישנים
+          const [uiLang, setUiLang] = useState(() => localStorage.getItem('uiLang') || 'he');
           
           const fileInputRef = useRef(null);
           const workerRef = useRef(null);
@@ -326,23 +408,126 @@
           const whisperDownloadsRef = useRef({});
           const nllbDownloadsRef = useRef({});
 
+          // --- Initialization & LocalStorage Saves ---
           useEffect(() => {
-            if (navigator.gpu) setHasWebGPU(true);
+              const savedKey = localStorage.getItem('gemini_api_key');
+              if (savedKey) setGeminiApiKey(savedKey);
+              
+              if (theme === 'dark') document.documentElement.classList.add('dark');
+              else document.documentElement.classList.remove('dark');
+          }, [theme]);
+          
+          useEffect(() => localStorage.setItem('numChunks', numChunks.toString()), [numChunks]);
+          useEffect(() => localStorage.setItem('exportFormat', exportFormat), [exportFormat]);
+          useEffect(() => localStorage.setItem('editorFontSize', editorFontSize), [editorFontSize]);
+          
+          useEffect(() => {
+              localStorage.setItem('uiLang', uiLang);
+              document.documentElement.dir = uiLang === 'he' ? 'rtl' : 'ltr';
+              document.documentElement.lang = uiLang;
+          }, [uiLang]);
 
+          // --- Firebase Auth & Setup (Transparent Authentication with Fallback) ---
+          useEffect(() => {
+              const initCanvasAuth = async () => {
+                  if (isFirebaseDummy) {
+                      // Bypass auth entirely if dummy environment to prevent console errors
+                      setUser({ uid: 'local-user', displayName: 'משתמש מקומי', email: 'local@example.com' });
+                      setIsAuthLoading(false);
+                      return;
+                  }
+
+                  if (!auth) {
+                      setIsAuthLoading(false);
+                      return;
+                  }
+                  
+                  try {
+                      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                          await signInWithCustomToken(auth, __initial_auth_token);
+                      } else {
+                          await signInAnonymously(auth);
+                      }
+                  } catch (e) {
+                      console.warn("Auth init bypassed:", e);
+                      setUser({ uid: 'local-user', displayName: 'משתמש מקומי', email: 'local@example.com' });
+                      setIsAuthLoading(false);
+                  }
+              };
+              
+              initCanvasAuth();
+
+              if (!isFirebaseDummy && auth) {
+                  const unsubscribe = onAuthStateChanged(auth, async (currUser) => {
+                      if (!currUser) return;
+                      setUser(currUser);
+                      setIsAuthLoading(false);
+                      
+                      try {
+                          const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'logins', currUser.uid);
+                          await setDoc(userRef, {
+                              email: currUser.email || 'Anonymous',
+                              name: currUser.displayName || 'Anonymous',
+                              lastLogin: new Date().toISOString(),
+                              month: new Date().getMonth() + 1,
+                              year: new Date().getFullYear()
+                          }, { merge: true });
+                      } catch (e) {
+                          // Silently fail if firestore is restricted
+                      }
+                  });
+                  return () => unsubscribe();
+              }
+          }, []);
+
+          // Fetch admin stats
+          useEffect(() => {
+              if (!isFirebaseDummy && user && user.email === 'hyywry013@gmail.com') {
+                  const fetchAdminStats = async () => {
+                      try {
+                          const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logins'));
+                          const snapshot = await getDocs(q);
+                          const currentMonth = new Date().getMonth() + 1;
+                          const currentYear = new Date().getFullYear();
+                          
+                          let total = 0;
+                          let monthCount = 0;
+                          
+                          snapshot.forEach(doc => {
+                              total++;
+                              const data = doc.data();
+                              if (data.month === currentMonth && data.year === currentYear) {
+                                  monthCount++;
+                              }
+                          });
+                          
+                          setAdminStats({ total, currentMonth: monthCount });
+                      } catch (e) {
+                          // Silently fail
+                      }
+                  };
+                  fetchAdminStats();
+              }
+          }, [user]);
+
+          const sendEmailReport = () => {
+              const subject = encodeURIComponent("דוח כניסות חודשי - אתר מחולל הכתוביות");
+              const body = encodeURIComponent(`שלום,\n\nהנה הנתונים לחודש הנוכחי:\nסך הכל משתמשים ייחודיים החודש: ${adminStats.currentMonth}\nסך הכל משתמשים אי פעם: ${adminStats.total}\n\nבברכה,\nמערכת האתר`);
+              window.location.href = `mailto:hyywry013@gmail.com?subject=${subject}&body=${body}`;
+          };
+
+          // --- ניהול מחזור החיים של ה-Worker למניעת דליפות זיכרון ---
+          useEffect(() => {
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             const workerUrl = URL.createObjectURL(blob);
             workerRef.current = new Worker(workerUrl, { type: 'module' });
 
             workerRef.current.onmessage = (e) => {
                 const { type, text, percent, step, data, chunks, error } = e.data;
-
-                if (type === 'status') {
-                    setStatusText(text);
-                } else if (type === 'progress_percent') {
-                    setProgress(percent);
-                } else if (type === 'progress') {
-                    handleWorkerProgress(step, data);
-                } else if (type === 'complete') {
+                if (type === 'status') setStatusText(text);
+                else if (type === 'progress_percent') setProgress(percent);
+                else if (type === 'progress') handleWorkerProgress(step, data);
+                else if (type === 'complete') {
                     const srt = formatSRT(chunks);
                     setSrtResult(srt);
                     setProgress(100);
@@ -358,9 +543,7 @@
             async function initStorage() {
               if (navigator.storage && navigator.storage.persist) {
                 let persisted = await navigator.storage.persisted();
-                if (!persisted) {
-                  persisted = await navigator.storage.persist();
-                }
+                if (!persisted) persisted = await navigator.storage.persist();
                 setIsPersistent(persisted);
               }
               calculateStorageUsed();
@@ -368,9 +551,12 @@
             initStorage();
 
             return () => {
-                if (workerRef.current) workerRef.current.terminate();
+                if (workerRef.current) {
+                    workerRef.current.terminate();
+                }
+                URL.revokeObjectURL(workerUrl);
             };
-          }, []);
+          }, [workerSession]);
 
           const handleWorkerProgress = (step, data) => {
               if (step === 'transcribe_load') {
@@ -378,14 +564,12 @@
                   if (data.status === 'initiate') downloads[data.file] = { loaded: 0, total: 0 };
                   else if (data.status === 'progress') downloads[data.file] = { loaded: data.loaded || 0, total: data.total || 0 };
                   else if (data.status === 'done' && downloads[data.file]) downloads[data.file].loaded = downloads[data.file].total;
-                  
                   updateProgressFromDownloads(downloads, 10, 0.3, "זיהוי קולי");
               } else if (step === 'translate_load') {
                   const downloads = nllbDownloadsRef.current;
                   if (data.status === 'initiate') downloads[data.file] = { loaded: 0, total: 0 };
                   else if (data.status === 'progress') downloads[data.file] = { loaded: data.loaded || 0, total: data.total || 0 };
                   else if (data.status === 'done' && downloads[data.file]) downloads[data.file].loaded = downloads[data.file].total;
-                  
                   updateProgressFromDownloads(downloads, 60, 0.2, "תרגום");
               }
           };
@@ -412,30 +596,8 @@
                 if (estimate.usageDetails && estimate.usageDetails.caches) totalBytes = estimate.usageDetails.caches;
                 else totalBytes = estimate.usage || 0;
               }
-              if (totalBytes === 0 && 'caches' in window) {
-                const cacheNames = await caches.keys();
-                for (const cacheName of cacheNames) {
-                  if (cacheName.includes('transformers')) {
-                    const cache = await caches.open(cacheName);
-                    const requests = await cache.keys();
-                    for (const req of requests) {
-                      const res = await cache.match(req);
-                      if (res) {
-                        const size = res.headers.get('content-length');
-                        if (size) totalBytes += parseInt(size, 10);
-                        else {
-                          const blob = await res.blob();
-                          totalBytes += blob.size;
-                        }
-                      }
-                    }
-                  }
-                }
-              }
               setStorageUsedMB((totalBytes / (1024 * 1024)).toFixed(2));
-            } catch (err) {
-              console.error("שגיאה בחישוב האחסון:", err);
-            }
+            } catch (err) {}
           };
 
           const clearStorage = async () => {
@@ -444,22 +606,17 @@
                 if ('caches' in window) {
                   const cacheNames = await caches.keys();
                   for (const cacheName of cacheNames) {
-                    if (cacheName.includes('transformers')) {
-                      await caches.delete(cacheName);
-                    }
+                    if (cacheName.includes('transformers')) await caches.delete(cacheName);
                   }
                 }
                 setStorageUsedMB('0.00');
                 
-                if (workerRef.current) workerRef.current.terminate();
-                const blob = new Blob([workerCode], { type: 'application/javascript' });
-                workerRef.current = new Worker(URL.createObjectURL(blob), { type: 'module' });
+                // Reset worker safely
+                processingSessionRef.current += 1;
+                setWorkerSession(prev => prev + 1);
                 
                 alert('כל קובצי המודלים נמחקו בהצלחה מהכספת והזיכרון פונה!');
-              } catch (err) {
-                console.error("שגיאה בניקוי האחסון:", err);
-                alert('אירעה שגיאה בעת ניקוי האחסון.');
-              }
+              } catch (err) { alert('אירעה שגיאה בעת ניקוי האחסון.'); }
             }
           };
 
@@ -478,6 +635,7 @@
           const handleFileSelect = (e) => {
             const selected = e.target.files && e.target.files.length > 0 ? e.target.files[0] : null;
             if (selected) validateAndSetFile(selected);
+            if (fileInputRef.current) fileInputRef.current.value = '';
           };
 
           const handleDrop = (e) => {
@@ -490,7 +648,7 @@
           };
 
           const validateAndSetFile = (selectedFile) => {
-            const maxSizeMB = 2048; // עד 2GB
+            const maxSizeMB = 2048; 
             if (selectedFile.size > maxSizeMB * 1024 * 1024) {
               setStatus('error');
               setErrorMessage(`הקובץ גדול מדי (${(selectedFile.size / (1024*1024)).toFixed(1)}MB). המערכת תומכת כעת בקבצים כבדים עד 2GB.`);
@@ -498,7 +656,7 @@
             }
             if (selectedFile.type.startsWith('video/') || selectedFile.type.startsWith('audio/') || selectedFile.name.match(/\.(mp4|mkv|avi|mpeg|mpga|m4a|wav|webm|mp3)$/i)) {
               setFile(selectedFile);
-              setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0);
+              setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0); setCopied(false);
               whisperDownloadsRef.current = {}; nllbDownloadsRef.current = {}; 
             } else {
               setStatus('error');
@@ -525,483 +683,904 @@
           };
 
           const processFileLocal = async () => {
-            if (!file || !workerRef.current) return;
+            if (!file || !workerRef.current || status === 'processing') return;
+            
+            const currentSession = processingSessionRef.current;
+            let audioCtx = null;
+            
+            // אזהרת זיכרון לקבצים עצומים למניעת קריסת הדפדפן
+            if (file.size > 500 * 1024 * 1024) {
+                if (!window.confirm('הקובץ שבחרת גדול מאוד (מעל 500MB). פענוח הקובץ דורש כמות זיכרון (RAM) גדולה מאוד מהמחשב שלך ועלול לגרום לדפדפן לקרוס. האם ברצונך להמשיך בכל זאת? מומלץ לחתוך או להמיר ל-MP3.')) {
+                    return;
+                }
+            }
             
             try {
               setStatus('processing');
               setErrorMessage('');
               setProgress(5);
-              
               setStatusText(`קורא את הקובץ (${(file.size / (1024*1024)).toFixed(0)}MB) לזיכרון...`);
-              await new Promise(resolve => setTimeout(resolve, 100));
-
-              const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-              let arrayBuffer = await file.arrayBuffer();
               
-              setStatusText('מחלץ ומפענח רצועת שמע (בסרטונים כבדים זה עשוי לקחת מעט זמן)...');
+              await new Promise(resolve => setTimeout(resolve, 150));
+              if (currentSession !== processingSessionRef.current) return;
+              
+              let arrayBuffer;
+              try {
+                  arrayBuffer = await file.arrayBuffer();
+              } catch (bufferErr) {
+                  throw new Error('קריאת הקובץ נכשלה. ייתכן שהקובץ כבד מדי לזיכרון ה-RAM הפנוי במחשב שלך.');
+              }
+              
+              if (currentSession !== processingSessionRef.current) return;
+              
+              audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+              
+              setStatusText('מחלץ ומפענח רצועת שמע (בסרטונים כבדים זה עשוי לקחת מספר דקות)...');
+              setProgress(8);
               await new Promise(resolve => setTimeout(resolve, 100));
               
               let decodedAudio;
               try {
                   decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
               } catch (decodeErr) {
-                  throw new Error('הקובץ כבד מדי לזיכרון הפנימי של הדפדפן (RAM). נסה לחתוך את הסרטון או להמיר אותו לקובץ שמע (MP3) לפני ההעלאה.');
+                  console.error("Audio Decode Error:", decodeErr);
+                  throw new Error('הדפדפן כשל בפענוח הקובץ. זיכרון ה-RAM במחשב לא הספיק לעיבוד גודל כזה של שמע. אנא המר את הקובץ לפורמט שמע מכווץ (כמו MP3) ונסה שוב.');
               }
               
-              // פינוי מיידי של הסרטון מהזיכרון החי
               arrayBuffer = null;
+              if (currentSession !== processingSessionRef.current) return;
               
               let audioData = decodedAudio.getChannelData(0);
               
               if (audioCtx.state !== 'closed') await audioCtx.close();
+              audioCtx = null;
               
-              setProgress(10);
-              setStatusText('מעביר את השמע לתהליך רקע חכם (Web Worker)...');
+              setProgress(12);
+              setStatusText('מעביר נתונים למנוע הבינה המלאכותית (Web Worker)...');
 
               workerRef.current.postMessage({
                   type: 'process',
-                  data: {
-                      audioData: audioData,
-                      modelSize: modelSize,
-                      mode: mode
-                  }
+                  data: { audioData, modelSize, mode, numChunks }
               }, [audioData.buffer]);
-
+              
               decodedAudio = null;
               audioData = null;
 
             } catch (err) {
-              console.error('Error extracting audio:', err);
-              setStatus('error');
-              setErrorMessage(err.message || 'אירעה שגיאה בחילוץ השמע מהקובץ.');
+              if (currentSession === processingSessionRef.current) {
+                  setStatus('error');
+                  setErrorMessage(err.message || 'אירעה שגיאה בלתי צפויה בחילוץ השמע מהקובץ.');
+              }
+            } finally {
+              // הגנה מושלמת לשחרור זיכרון ה-Audio Context גם במקרה של קריסה
+              if (audioCtx && audioCtx.state !== 'closed') {
+                  try { await audioCtx.close(); } catch(e){}
+              }
             }
+          };
+
+          const stripSrt = (srt) => {
+              return srt.replace(/^\d+$/gm, '')
+                        .replace(/^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}$/gm, '')
+                        .replace(/\n{2,}/g, '\n')
+                        .trim();
           };
 
           const downloadSrt = () => {
             if (!srtResult) return;
-            const blob = new Blob([srtResult], { type: 'text/plain;charset=utf-8' });
+            
+            let finalContent = srtResult;
+            let mimeType = 'text/plain;charset=utf-8';
+            
+            if (exportFormat === 'vtt') {
+                finalContent = "WEBVTT\n\n" + srtResult.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+            } else if (exportFormat === 'txt') {
+                finalContent = stripSrt(srtResult);
+            }
+
+            const blob = new Blob([finalContent], { type: mimeType });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
+            
             const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-            const suffix = mode === 'translate_en_he' ? '_translated_he' : '_local_he';
-            a.download = `${originalName || 'subtitles'}${suffix}.srt`;
+            let suffix = '_he';
+            if(mode === 'translate_en_he') suffix = '_translated_he';
+            if(mode === 'transcribe_en') suffix = '_en';
+            if(mode === 'translate_he_en') suffix = '_translated_en';
+            
+            a.download = `${originalName || 'subtitles'}${suffix}.${exportFormat}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
           };
 
+          const copyToClipboard = async () => {
+              try {
+                  await navigator.clipboard.writeText(srtResult);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+              } catch (err) {
+                  const textArea = document.createElement("textarea");
+                  textArea.value = srtResult;
+                  document.body.appendChild(textArea);
+                  textArea.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(textArea);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+              }
+          };
+
+          const handleSaveApiKey = () => {
+              if (tempApiKey.trim()) {
+                  localStorage.setItem('gemini_api_key', tempApiKey.trim());
+                  setGeminiApiKey(tempApiKey.trim());
+                  setShowApiKeyModal(false);
+                  
+                  if (pendingAction) {
+                      handleLlmAction(pendingAction, tempApiKey.trim());
+                      setPendingAction(null);
+                  }
+              }
+          };
+
+          const handleRemoveApiKey = () => {
+              localStorage.removeItem('gemini_api_key');
+              setGeminiApiKey('');
+              setTempApiKey('');
+          };
+
+          const triggerLlmAction = (actionType) => {
+              if (!geminiApiKey) {
+                  setPendingAction(actionType);
+                  setShowApiKeyModal(true);
+              } else {
+                  handleLlmAction(actionType, geminiApiKey);
+              }
+          };
+
+          const handleLlmAction = async (actionType, apiKeyToUse = geminiApiKey) => {
+              const cleanText = stripSrt(srtResult);
+              if (!cleanText) {
+                  setLlmError('אין טקסט לפענוח.');
+                  return;
+              }
+
+              setIsLlmLoading(true);
+              setLlmError('');
+              setLlmResult('');
+              setActiveLlmAction(actionType);
+
+              let promptContext = "";
+              if (actionType === 'summary') promptContext = "כתוב סיכום קצר וקולע של הטקסט הבא:";
+              if (actionType === 'grammar') promptContext = "תקן שגיאות כתיב, תחביר ופיסוק בטקסט הבא. החזר רק את הטקסט המתוקן (ללא חותמות זמן):";
+              if (actionType === 'topics') promptContext = "חלק את הטקסט הבא לנושאים מרכזיים עם כותרות. הצג כרשימה:";
+              if (actionType === 'cinematic') promptContext = "עבור על טקסט הכתוביות הבא. זהה באופן אוטומטי קטעי שירה או חרוזים והתאם אותם לעברית בחרוזים. שים לב להקשר ולדוברים והתאם את לשון הפנייה (זכר/נקבה) באופן מדויק. שפר את הניסוח כך שיתאים לכתוביות סרט טבעיות וזורמות. החזר רק את הטקסט המתוקן (ללא חותמות זמן):";
+
+              const payload = {
+                  contents: [{ parts: [{ text: `${promptContext}\n\n${cleanText}` }] }],
+                  systemInstruction: { parts: [{ text: "אתה עוזר בינה מלאכותית. ענה רק בעברית ושמור על שפה נקייה ומכבדת." }] }
+              };
+
+              let retries = 5;
+              let delay = 1000;
+              let success = false;
+
+              while (retries > 0 && !success) {
+                  try {
+                      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKeyToUse}`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(payload)
+                      });
+                      
+                      if (!response.ok) {
+                          if (response.status === 400 || response.status === 403) {
+                              throw new Error('מפתח API לא תקין או שאין הרשאות. אנא בדוק את המפתח שהזנת.');
+                          }
+                          throw new Error(`HTTP error! status: ${response.status}`);
+                      }
+                      
+                      let result;
+                      try {
+                          result = await response.json();
+                      } catch (jsonErr) {
+                          throw new Error('שגיאת שרת: לא התקבל מידע תקין משרתי Gemini. ייתכן שיש עומס.');
+                      }
+                      
+                      const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                      
+                      if (generatedText) {
+                          setLlmResult(generatedText);
+                          success = true;
+                      } else {
+                          throw new Error('לא התקבל טקסט תקין מהמודל.');
+                      }
+                  } catch (e) {
+                      if (e.message.includes('מפתח API')) {
+                          setLlmError(e.message);
+                          handleRemoveApiKey(); 
+                          break;
+                      }
+                      
+                      retries--;
+                      if (retries === 0) {
+                          setLlmError('אירעה שגיאה בתקשורת עם ה-AI. נסה שוב מאוחר יותר. ' + e.message);
+                      } else {
+                          await new Promise(r => setTimeout(r, delay));
+                          delay *= 2;
+                      }
+                  }
+              }
+              setIsLlmLoading(false);
+          };
+
           const resetApp = () => {
-            setFile(null); setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0);
+            setFile(null); setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0); setCopied(false);
+            setLlmResult(''); setLlmError(''); setActiveLlmAction(null);
+            
+            // בטל פעולות קודמות ואפס זיכרון
+            processingSessionRef.current += 1;
+            setWorkerSession(prev => prev + 1);
+            
             calculateStorageUsed();
           };
 
-          // פונקציית התחברות
-          const handleLogin = (e) => {
-            e.preventDefault();
-            if (pinInput === SECRET_PIN) {
-                // שמירת חותמת בדפדפן הנוכחי לתמיד
-                localStorage.setItem('is_my_browser', 'true');
-                setIsAuthenticated(true);
-            } else {
-                setPinError(true);
-                setPinInput('');
-            }
+          const i18n = {
+              he: {
+                  loading: "טוען נתונים...",
+                  subtitle: "פענוח ותרגום חכם שרץ כולו על המחשב שלך",
+                  storage: "אחסון:",
+                  clear: "ניקוי",
+                  settings: "הגדרות",
+                  apiConnected: "API מחובר",
+                  setApi: "הגדר API",
+                  privacyTitle: "100% פרטיות - עיבוד מקומי",
+                  privacyDesc: "הקבצים שלך לעולם לא נשלחים לאינטרנט. כל זיהוי הקול והתרגום מתבצעים על גבי המחשב שלך בלבד (Local Processing).",
+                  dragTitle: "גרור קובץ וידאו או שמע לכאן",
+                  dragDesc: "או לחץ כאן לבחירה מהמחשב (תומך עד 2GB)",
+                  changeFile: "החלף קובץ",
+                  actionType: "סוג הפעולה:",
+                  modelSize: "גודל ואיכות המודל:",
+                  startProcessing: "התחל עיבוד ולמידת מכונה",
+                  processingWarn: "הפעולה מתבצעת באופן מקומי לחלוטין על גבי מעבד המחשב שלך. אנא אל תסגור דף זה.",
+                  progress: "התקדמות",
+                  readyTitle: "הכיתוביות מוכנות!",
+                  readyDesc: "העיבוד המקומי הסתיים בהצלחה. ניתן לערוך את הטקסט למטה לפני ההורדה.",
+                  copy: "העתק",
+                  copied: "הועתק!",
+                  downloadBtn: "הורד",
+                  editorTitle: "עורך כתוביות (ניתן לעריכה)",
+                  aiFeatures: "✨ פעולות AI מתקדמות (Gemini API)",
+                  summary: "תמצות חכם",
+                  grammar: "תיקון שגיאות כתיב",
+                  topics: "חלוקה לנושאים",
+                  cinematic: "התאמה קולנועית חכמה",
+                  startOver: "התחל מחדש עם קובץ אחר",
+                  errorTitle: "שגיאה בתהליך",
+                  tryAgain: "נסה שוב",
+                  adminPanel: "פאנל ניהול מנהל",
+                  monthlyLogins: "כניסות ייחודיות החודש:",
+                  sendReport: "שלח דוח חודשי",
+                  settingsTitle: "הגדרות מערכת",
+                  theme: "ערכת נושא:",
+                  light: "בהיר",
+                  dark: "כהה",
+                  chunks: "פיצולי הורדה מקבילית (Chunks):",
+                  chunksDesc: "קובע לכמה חלקים יפוצל המודל בעת ההורדה הראשונית. ערך גבוה מאיץ את ההורדה אך עלול לגרום לחסימות שרת במקרים מסוימים.",
+                  exportFormatLabel: "פורמט הורדה (ברירת מחדל):",
+                  fontSizeLabel: "גודל טקסט בעורך:",
+                  fontSmall: "קטן",
+                  fontMedium: "בינוני",
+                  fontLarge: "גדול",
+                  closeSave: "סגור ושמור",
+                  apiTitle: "הגדרת מפתח Gemini API",
+                  apiDesc: "כדי להשתמש בתכונות ה-AI המתקדמות (תמצות, הגהה, עריכה יצירתית), עליך לספק מפתח API משלך. המפתח נשמר מקומית בדפדפן שלך בלבד ולא נשלח לשום שרת זר.",
+                  apiKeyLabel: "מפתח API:",
+                  apiKeyPlaceholder: "הדבק את המפתח כאן (מתחיל ב-AIza...)",
+                  noApiKey: "אין לך מפתח?",
+                  getApiKey: "לחץ כאן כדי לייצר מפתח חינמי ב-Google AI Studio",
+                  deleteKey: "מחק מפתח",
+                  cancel: "ביטול"
+              },
+              en: {
+                  loading: "Loading data...",
+                  subtitle: "Smart transcription & translation running entirely on your PC",
+                  storage: "Storage:",
+                  clear: "Clear",
+                  settings: "Settings",
+                  apiConnected: "API Connected",
+                  setApi: "Set API",
+                  privacyTitle: "100% Privacy - Local Processing",
+                  privacyDesc: "Your files never leave your computer. All speech recognition and translation are done locally.",
+                  dragTitle: "Drag audio or video file here",
+                  dragDesc: "Or click to select from your computer (Up to 2GB)",
+                  changeFile: "Change File",
+                  actionType: "Action Type:",
+                  modelSize: "Model Size & Quality:",
+                  startProcessing: "Start AI Processing",
+                  processingWarn: "Processing locally on your computer's CPU. Please do not close this page.",
+                  progress: "Progress",
+                  readyTitle: "Subtitles are ready!",
+                  readyDesc: "Local processing completed successfully. You can edit the text below before downloading.",
+                  copy: "Copy",
+                  copied: "Copied!",
+                  downloadBtn: "Download",
+                  editorTitle: "Subtitle Editor (Editable)",
+                  aiFeatures: "✨ Advanced AI Actions (Gemini API)",
+                  summary: "Smart Summary",
+                  grammar: "Fix Grammar",
+                  topics: "Extract Topics",
+                  cinematic: "Smart Cinematic Adaptation",
+                  startOver: "Start over with a different file",
+                  errorTitle: "Process Error",
+                  tryAgain: "Try Again",
+                  adminPanel: "Admin Panel",
+                  monthlyLogins: "Unique Logins this Month:",
+                  sendReport: "Send Monthly Report",
+                  settingsTitle: "System Settings",
+                  theme: "Theme:",
+                  light: "Light",
+                  dark: "Dark",
+                  chunks: "Parallel Download Chunks:",
+                  chunksDesc: "Determines how many parts the model is split into during initial download. Higher value speeds up download but may cause server blocks.",
+                  exportFormatLabel: "Default Export Format:",
+                  fontSizeLabel: "Editor Font Size:",
+                  fontSmall: "Small",
+                  fontMedium: "Medium",
+                  fontLarge: "Large",
+                  closeSave: "Close & Save",
+                  apiTitle: "Set Gemini API Key",
+                  apiDesc: "To use advanced AI features (summarization, proofreading, creative adaptation), you must provide your own API key. The key is saved locally in your browser and is not sent to any external server.",
+                  apiKeyLabel: "API Key:",
+                  apiKeyPlaceholder: "Paste key here (starts with AIza...)",
+                  noApiKey: "Don't have a key?",
+                  getApiKey: "Click here to generate a free key in Google AI Studio",
+                  deleteKey: "Delete Key",
+                  cancel: "Cancel"
+              }
           };
+          const t = i18n[uiLang];
 
-          // מסך הנעילה (יוצג אם הדפדפן לא אושר)
-          if (!isAuthenticated) {
-            return (
-              <div dir="rtl" className="min-h-screen bg-slate-900 flex items-center justify-center p-4 sm:p-6">
-                  <div className="bg-white rounded-[2rem] p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center relative overflow-hidden mx-auto">
-                      <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
-                      <div className="bg-indigo-50 w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6">
-                        <Lock className="text-indigo-600 w-8 h-8 sm:w-10 sm:h-10" />
+          if (isAuthLoading) {
+              return (
+                  <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] dark:bg-slate-950">
+                      <div className="flex flex-col items-center gap-4">
+                          <Loader2 className="animate-spin text-indigo-600 dark:text-indigo-400" size={48} />
+                          <p className="text-slate-600 dark:text-slate-300 font-medium">{t.loading}</p>
                       </div>
-                      <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800 mb-2">אזור פרטי</h2>
-                      <p className="text-slate-500 mb-6 sm:mb-8 text-xs sm:text-sm font-medium px-2">הזן את קוד הגישה כדי לאשר דפדפן זה לשימוש קבוע.</p>
-                      <form onSubmit={handleLogin}>
-                          <input
-                              type="password"
-                              value={pinInput}
-                              onChange={(e) => { setPinInput(e.target.value); setPinError(false); }}
-                              className={`w-full text-center text-2xl sm:text-3xl tracking-[0.3em] sm:tracking-[0.5em] p-3 sm:p-4 border-2 ${pinError ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-200 focus:border-indigo-500 bg-slate-50'} rounded-xl sm:rounded-2xl mb-4 outline-none transition-all`}
-                              placeholder="****"
-                              autoFocus
-                          />
-                          {pinError && <p className="text-red-500 text-xs sm:text-sm mb-4 font-bold animate-bounce">קוד שגוי, נסה שוב.</p>}
-                          <button type="submit" className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-3 sm:py-4 rounded-xl sm:rounded-2xl transition-colors shadow-lg mt-2 text-sm sm:text-base">
-                              אמת דפדפן והיכנס
-                          </button>
-                      </form>
                   </div>
-              </div>
-            );
+              );
           }
 
           return (
-            <div dir="rtl" className="min-h-screen pb-8 pt-4 px-3 sm:pb-12 sm:pt-6 sm:px-6 lg:px-8 flex flex-col items-center">
+            <div dir={uiLang === 'he' ? 'rtl' : 'ltr'} className="min-h-screen pb-12 pt-6 px-4 sm:px-6 lg:px-8 flex flex-col items-center relative text-slate-800 dark:text-slate-200">
               
-              {/* Header area outside card */}
-              <div className="w-full max-w-4xl flex flex-col sm:flex-row justify-between items-center sm:items-end gap-4 sm:gap-0 mb-5 sm:mb-6 text-center sm:text-right">
-                <div className="flex flex-col gap-1 sm:gap-1.5 items-center sm:items-start">
-                  <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 sm:gap-3">
-                    <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">AI Subtitles</span>
-                    <Sparkles className="text-indigo-500 animate-pulse w-6 h-6 sm:w-8 sm:h-8" />
-                  </h1>
-                  <p className="text-slate-500 font-medium text-xs sm:text-sm md:text-base px-2 sm:px-0">פענוח ותרגום חכם שרץ כולו על המחשב שלך (תומך עד 2GB)</p>
-                </div>
-                
-                {/* Storage Manager Chip */}
-                <div className="hidden sm:flex items-center gap-3 bg-white/60 backdrop-blur-md border border-slate-200/60 shadow-sm rounded-full py-1.5 px-4 hover:bg-white transition-colors group">
-                  <HardDrive size={16} className="text-indigo-500" />
-                  <span className="text-sm font-medium text-slate-600">אחסון מקומי: <span className="font-bold text-slate-800" dir="ltr">{storageUsedMB} MB</span></span>
-                  {parseFloat(storageUsedMB) > 0 && (
-                    <button 
-                      onClick={clearStorage}
-                      title="ניקוי מטמון"
-                      className="text-slate-400 hover:text-red-500 transition-colors mr-2 p-1 hover:bg-red-50 rounded-full"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Main Card */}
-              <main className="w-full max-w-4xl bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative">
-                
-                {/* Decorative Top Gradient */}
-                <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient-x"></div>
-
-                <div className="p-4 sm:p-6 md:p-10">
+              {/* Main Content Area */}
+              <div className="w-full flex flex-col items-center transition-all duration-700">
                   
-                  {/* Warnings / Notices */}
-                  <div className="grid gap-3 sm:gap-4 mb-6 sm:mb-8">
-                    <div className="bg-amber-50/80 border border-amber-200/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-2 sm:gap-4">
-                      <AlertTriangle className="text-amber-600 sm:mt-0.5 shrink-0" size={24} />
-                      <div>
-                        <h3 className="font-bold text-amber-900 text-sm sm:text-base">כלי בפיתוח (Beta)</h3>
-                        <p className="text-amber-800 text-xs sm:text-sm mt-1 leading-relaxed">
-                          המערכת מבצעת חישובים כבדים באופן מקומי ועשויה לאמץ מחשבים ישנים. פועל בטכנולוגיית Web Worker למניעת קפיאות ממשק. השימוש באחריותך.
-                        </p>
-                      </div>
+                  {/* Header area */}
+                  <div className="w-full max-w-4xl flex justify-between items-end mb-6">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
+                        <span className="bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">AI Subtitles</span>
+                        <Sparkles className="text-indigo-500 dark:text-indigo-400 animate-pulse" size={28} />
+                      </h1>
+                      <p className="text-slate-500 dark:text-slate-400 font-medium ml-1">{t.subtitle}</p>
                     </div>
                     
-                    {!isPersistent && (
-                      <div className="bg-blue-50/80 border border-blue-200/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-2 sm:gap-4">
-                        <Bookmark className="text-blue-600 sm:mt-0.5 shrink-0" size={24} />
-                        <div>
-                          <h3 className="font-bold text-blue-900 text-sm sm:text-base">טיפ לביצועים:</h3>
-                          <p className="text-blue-800 text-xs sm:text-sm mt-1 leading-relaxed">
-                            הרץ את הקובץ דרך שרת מקומי (Localhost) כדי לשמור את המודלים בכספת הדפדפן ולחסוך הורדות חוזרות.
-                          </p>
-                        </div>
-                      </div>
-                    )}
+                    {/* User Profile & Storage */}
+                    <div className="hidden sm:flex items-center gap-3 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200/60 dark:border-slate-700/60 shadow-sm rounded-full py-1.5 px-4 hover:bg-white dark:hover:bg-slate-800 transition-colors group">
+                      {user && user.email && user.email !== 'Anonymous' && (
+                          <div className="flex items-center gap-2 pr-2 border-l border-slate-300 dark:border-slate-600">
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 max-w-[100px] truncate" title={user.email}>{user.displayName || user.email}</span>
+                          </div>
+                      )}
+
+                      <button 
+                          onClick={() => setUiLang(uiLang === 'he' ? 'en' : 'he')} 
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600"
+                          title="שנה שפה / Change Language"
+                      >
+                          <Globe size={14} />
+                          {uiLang === 'he' ? 'EN' : 'HE'}
+                      </button>
+                      
+                      <button 
+                          onClick={() => setShowSettingsModal(true)} 
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600"
+                          title={t.settings}
+                      >
+                          <Settings size={14} />
+                          {t.settings}
+                      </button>
+
+                      <button 
+                          onClick={() => setShowApiKeyModal(true)} 
+                          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold transition-colors border ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+                          title={t.apiConnected}
+                      >
+                          <Key size={14} />
+                          {geminiApiKey ? t.apiConnected : t.setApi}
+                      </button>
+                      
+                      <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1"></div>
+
+                      <HardDrive size={16} className="text-indigo-500 dark:text-indigo-400 mr-2" />
+                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{t.storage} <span className="font-bold text-slate-800 dark:text-slate-200" dir="ltr">{storageUsedMB} MB</span></span>
+                      {parseFloat(storageUsedMB) > 0 && (
+                        <button onClick={clearStorage} title={t.clear} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full"><Trash2 size={14} /></button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* IDLE STATE: File Selection */}
-                  {status === 'idle' && !file && (
-                    <div 
-                      className={`border-2 border-dashed rounded-[1.5rem] sm:rounded-[2rem] p-8 sm:p-12 md:p-16 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ease-in-out ${
-                        isDragging 
-                          ? 'border-indigo-500 bg-indigo-50/50 scale-[1.02] shadow-inner' 
-                          : 'border-slate-300 hover:border-indigo-400 bg-slate-50/50 hover:bg-slate-50/80'
-                      }`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm mb-4 sm:mb-5 transition-transform duration-300 ${isDragging ? 'bg-indigo-100 scale-110' : 'bg-white'}`}>
-                        <FileVideo className={`w-10 h-10 sm:w-12 sm:h-12 ${isDragging ? 'text-indigo-600' : 'text-slate-400'}`} />
+                  {/* Admin Dashboard */}
+                  {user?.email === 'hyywry013@gmail.com' && (
+                      <div className="w-full max-w-4xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-800/50 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between shadow-sm gap-4">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-indigo-600 dark:bg-indigo-500 text-white p-2.5 rounded-xl shadow-sm"><Users size={20} /></div>
+                              <div>
+                                  <h3 className="font-bold text-indigo-900 dark:text-indigo-200 text-sm">{t.adminPanel}</h3>
+                                  <p className="text-xs text-indigo-700 dark:text-indigo-300">{t.monthlyLogins} <strong className="text-sm bg-indigo-100 dark:bg-indigo-800/50 px-1.5 py-0.5 rounded">{adminStats.currentMonth}</strong></p>
+                              </div>
+                          </div>
+                          <button onClick={sendEmailReport} className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold py-2.5 px-5 rounded-xl shadow transition-colors flex items-center gap-2 text-sm">
+                              <Mail size={16} /> {t.sendReport}
+                          </button>
                       </div>
-                      <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 mb-1 sm:mb-2">
-                        {isDragging ? 'שחרר את הקובץ כאן!' : 'בחר קובץ וידאו או שמע'}
-                      </h3>
-                      <p className="text-slate-500 font-medium text-xs sm:text-base">או גרור אותו לתוך אזור זה</p>
-                      <p className="text-slate-400 text-[10px] sm:text-sm mt-4 px-3 sm:px-4 py-1.5 bg-slate-200/50 rounded-full">עד 2GB (2000MB) • תומך MP4, MP3, WAV ועוד</p>
-                      
-                      <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileSelect} 
-                        className="hidden" 
-                        accept="video/*,audio/*"
-                      />
-                    </div>
                   )}
 
-                  {/* ACTIVE STATE: File Selected / Processing / Complete */}
-                  {(file || status !== 'idle') && (
-                    <div className="space-y-4 sm:space-y-6">
+                  {/* Main Interaction Card */}
+                  <main className="w-full max-w-4xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-[2rem] shadow-xl border border-white/60 dark:border-slate-800/60 overflow-hidden relative">
+                    <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient-x"></div>
+
+                    <div className="p-6 sm:p-10">
                       
-                      {/* File Card */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl p-3 sm:p-6 flex flex-col sm:flex-row items-center gap-3 sm:gap-5 relative overflow-hidden group transition-all">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                        <div className="bg-white p-2.5 sm:p-3.5 rounded-lg sm:rounded-xl shadow-sm border border-slate-100 text-indigo-600 shrink-0">
-                          {file?.type?.startsWith('audio') ? <FileAudio className="w-6 h-6 sm:w-7 sm:h-7" /> : <FileVideo className="w-6 h-6 sm:w-7 sm:h-7" />}
-                        </div>
-                        <div className="flex-1 text-center sm:text-right w-full min-w-0">
-                          <h4 className="font-bold text-slate-800 text-sm sm:text-lg truncate w-full" dir="ltr">{file?.name}</h4>
-                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3 mt-1.5 text-[10px] sm:text-sm text-slate-500">
-                            <span className="flex items-center gap-1 font-mono bg-slate-200/60 px-2 py-0.5 rounded-md">
-                              {(file?.size / (1024 * 1024)).toFixed(2)} MB
-                            </span>
-                            <span className="flex items-center gap-1 text-indigo-600 font-medium">
-                              <Lock size={12} className="sm:w-[14px] sm:h-[14px]" /> עיבוד מקומי
-                            </span>
+                      <div className="grid gap-4 mb-8">
+                        <div className="bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-2xl p-4 flex items-start gap-4 shadow-sm">
+                          <Lock className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" size={24} />
+                          <div>
+                            <h3 className="font-bold text-blue-900 dark:text-blue-200">{t.privacyTitle}</h3>
+                            <p className="text-blue-800 dark:text-blue-300 text-sm mt-1">{t.privacyDesc}</p>
                           </div>
-                          {file?.size > 200 * 1024 * 1024 && (
-                            <p className="text-amber-600 text-[10px] sm:text-xs font-medium mt-2 flex items-center justify-center sm:justify-start gap-1">
-                              <AlertTriangle size={12} className="shrink-0" />
-                              קובץ כבד: החילוץ עשוי לקחת מעט זמן.
-                            </p>
-                          )}
                         </div>
-                        {status === 'idle' && (
-                          <button 
-                            onClick={resetApp}
-                            className="text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 hover:text-slate-900 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl transition-all shadow-sm w-full sm:w-auto mt-2 sm:mt-0"
-                          >
-                            החלף קובץ
-                          </button>
-                        )}
                       </div>
 
-                      {/* Settings Panel */}
-                      {status === 'idle' && (
-                        <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm">
-                          <h4 className="font-bold text-slate-800 text-sm sm:text-base mb-4 sm:mb-5 flex items-center gap-2">
-                            <Settings2 size={18} className="text-indigo-500 shrink-0" />
-                            הגדרות עיבוד
-                          </h4>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                            <div className="space-y-1.5 sm:space-y-2">
-                              <label className="block text-xs sm:text-sm font-semibold text-slate-700">סוג הפעולה:</label>
-                              <div className="relative">
-                                <select 
-                                  value={mode}
-                                  onChange={(e) => setMode(e.target.value)}
-                                  className="w-full pl-3 pr-8 sm:pr-10 py-2.5 sm:py-3 border border-slate-300 rounded-lg sm:rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-xs sm:text-sm md:text-base text-slate-700 transition-colors shadow-sm"
-                                >
-                                  <option value="transcribe_he">דיבור בעברית ➔ כיתוביות בעברית</option>
-                                  <option value="translate_en_he">דיבור באנגלית ➔ תרגום לעברית</option>
-                                </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 sm:pr-3 text-slate-500">
-                                  <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="space-y-1.5 sm:space-y-2">
-                              <label className="block text-xs sm:text-sm font-semibold text-slate-700">איכות המודל:</label>
-                              <div className="relative">
-                                <select 
-                                  value={modelSize}
-                                  onChange={(e) => setModelSize(e.target.value)}
-                                  className="w-full pl-3 pr-8 sm:pr-10 py-2.5 sm:py-3 border border-slate-300 rounded-lg sm:rounded-xl bg-slate-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none appearance-none font-medium text-xs sm:text-sm md:text-base text-slate-700 transition-colors shadow-sm"
-                                >
-                                  <option value="Xenova/whisper-tiny">בסיסי (Tiny) - סופר מהיר (מומלץ)</option>
-                                  <option value="Xenova/whisper-base">רגיל (Base) - איזון בין מהירות לדיוק</option>
-                                  <option value="Xenova/whisper-small">מדויק (Small) - כבד יותר</option>
-                                </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 sm:pr-3 text-slate-500">
-                                  <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg sm:rounded-xl flex items-start gap-2 sm:gap-3">
-                            <Zap className="mt-0.5 shrink-0 text-indigo-500 w-4 h-4 sm:w-5 sm:h-5" />
-                            <div className="text-xs sm:text-sm text-indigo-900 leading-relaxed">
-                              <strong className="font-bold flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
-                                מאיץ AI (דור 3 - יציב)
-                                {hasWebGPU ? (
-                                    <span className="bg-green-100 text-green-700 px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs border border-green-200 font-bold shadow-sm">🚀 WebGPU פעיל</span>
-                                ) : (
-                                    <span className="bg-slate-200 text-slate-600 px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs border border-slate-300">⚙️ עיבוד מעבד (CPU)</span>
-                                )}
-                              </strong>
-                              {hasWebGPU 
-                                ? 'מצב "האצת חומרה" מופעל! המערכת משתמשת בכרטיס המסך (WebGPU) שלך בגרסה היציבה ביותר, ותתאים את הקידוד אוטומטית לקבלת ביצועים מקסימליים ללא שגיאות.' 
-                                : 'המערכת מנצלת את כל ליבות המעבד עם גרסה 3 החדשה. למהירות מקסימלית באמת, פתח בדפדפן חדיש התומך ב-WebGPU.'}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Action Button */}
-                      {status === 'idle' && (
-                        <button 
-                          onClick={processFileLocal}
-                          className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-3 sm:py-4 px-4 rounded-xl sm:rounded-2xl shadow-[0_4px_14px_0_rgb(0,0,0,0.2)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 transition-all duration-200 flex justify-center items-center gap-2 sm:gap-3 text-lg sm:text-xl group relative overflow-hidden"
+                      {/* File Selection / Idle State */}
+                      {status === 'idle' && !file && (
+                        <div 
+                          className={`border-2 border-dashed rounded-[2rem] p-12 sm:p-20 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ${
+                            isDragging ? 'border-indigo-500 bg-indigo-50/80 dark:bg-indigo-900/20 scale-[1.02] shadow-inner' : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 bg-slate-50/50 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={handleDrop}
+                          onClick={() => fileInputRef.current?.click()}
                         >
-                          <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
-                          <Activity className="group-hover:animate-pulse w-5 h-5 sm:w-6 sm:h-6" />
-                          התחל פענוח AI
-                        </button>
+                          <div className={`bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-md border border-slate-100 dark:border-slate-700 text-indigo-500 dark:text-indigo-400 mb-6 transition-transform duration-300 ${isDragging ? 'scale-110' : ''}`}>
+                            <FileVideo size={56} />
+                          </div>
+                          <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">{t.dragTitle}</h3>
+                          <p className="text-slate-500 dark:text-slate-400 font-medium">{t.dragDesc}</p>
+                          <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="video/*,audio/*" />
+                        </div>
                       )}
 
-                      {/* Processing State */}
-                      {status === 'processing' && (
-                        <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-6 sm:p-8 md:p-12 flex flex-col items-center text-center relative overflow-hidden shadow-sm">
-                          <div className="absolute inset-0 bg-indigo-50/30"></div>
-                          
-                          <div className="relative z-10 w-full">
-                            <div className="relative mb-6 sm:mb-8 flex justify-center">
-                              <div className="absolute inset-0 bg-indigo-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
-                              <div className="bg-white p-3 sm:p-4 rounded-full shadow-lg border border-indigo-100 relative">
-                                <Loader2 className="animate-spin text-indigo-600 w-8 h-8 sm:w-10 sm:h-10" />
-                              </div>
+                      {/* File Info & Settings */}
+                      {(file || status !== 'idle') && (
+                        <div className="space-y-6">
+                          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-5 transition-all">
+                            <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 text-indigo-600 dark:text-indigo-400">
+                              {file?.type?.startsWith('audio') ? <FileAudio size={28} /> : <FileVideo size={28} />}
                             </div>
-                            
-                            <h3 className="text-lg sm:text-2xl font-bold text-slate-800 mb-2 sm:mb-3">{statusText}</h3>
-                            <p className="text-slate-500 font-medium text-xs sm:text-sm mb-6 sm:mb-10 max-w-md mx-auto">
-                              אל תסגור את הדף. הפעולה מתבצעת באופן מקומי לחלוטין על גבי המעבד שלך.
-                            </p>
-                            
-                            <div className="w-full max-w-lg mx-auto">
-                              <div className="flex justify-between text-xs sm:text-sm font-bold text-slate-600 mb-1.5 sm:mb-2 px-1">
-                                <span>התקדמות כללית</span>
-                                <span dir="ltr">{progress}%</span>
-                              </div>
-                              <div className="w-full bg-slate-100 rounded-full h-3 sm:h-4 overflow-hidden shadow-inner p-0.5 border border-slate-200/60">
-                                <div 
-                                  className="h-full rounded-full bg-gradient-to-l from-indigo-500 to-purple-500 relative transition-all duration-300 ease-out" 
-                                  style={{ width: `${progress}%` }}
-                                >
-                                  <div className="absolute inset-0 w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[stripes_1s_linear_infinite]"></div>
+                            <div className="flex-1 text-center sm:text-right">
+                              <h4 className="font-bold text-slate-800 dark:text-white text-lg truncate max-w-xs sm:max-w-md mx-auto sm:mx-0" dir="ltr">{file?.name}</h4>
+                              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-mono">{(file?.size / (1024 * 1024)).toFixed(2)} MB</p>
+                            </div>
+                            {status === 'idle' && (
+                              <button onClick={resetApp} className="text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-red-500 dark:hover:text-red-400 px-5 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-white dark:hover:bg-slate-800 shadow-sm transition-all w-full sm:w-auto">{t.changeFile}</button>
+                            )}
+                          </div>
+
+                          {status === 'idle' && (
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+                              <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-lg border-b border-slate-100 dark:border-slate-800 pb-3">
+                                <Settings2 size={20} className="text-indigo-500 dark:text-indigo-400" />
+                                {t.settings}
+                              </h4>
+                              <div className="grid md:grid-cols-2 gap-6 pt-2">
+                                <div className="space-y-2">
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.actionType}</label>
+                                  <div className="relative">
+                                      <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm">
+                                          <optgroup label={uiLang === 'he' ? "עברית" : "Hebrew"}>
+                                            <option value="transcribe_he">{uiLang === 'he' ? "דיבור בעברית ➔ כתוביות בעברית" : "Hebrew Speech ➔ Hebrew Subtitles"}</option>
+                                            <option value="translate_he_en">{uiLang === 'he' ? "דיבור בעברית ➔ תרגום לאנגלית" : "Hebrew Speech ➔ English Translation"}</option>
+                                          </optgroup>
+                                          <optgroup label={uiLang === 'he' ? "אנגלית" : "English"}>
+                                            <option value="transcribe_en">{uiLang === 'he' ? "דיבור באנגלית ➔ כתוביות באנגלית" : "English Speech ➔ English Subtitles"}</option>
+                                            <option value="translate_en_he">{uiLang === 'he' ? "דיבור באנגלית ➔ תרגום לעברית" : "English Speech ➔ Hebrew Translation"}</option>
+                                          </optgroup>
+                                      </select>
+                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
+                                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                      </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.modelSize}</label>
+                                  <div className="relative">
+                                      <select value={modelSize} onChange={(e) => setModelSize(e.target.value)} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm">
+                                          <option value="Xenova/whisper-tiny">{uiLang === 'he' ? "Tiny (מהיר מאוד, פחות מדויק)" : "Tiny (Very Fast, Less Accurate)"}</option>
+                                          <option value="Xenova/whisper-base">{uiLang === 'he' ? "Base (איזון מעולה - מומלץ!)" : "Base (Great Balance - Recommended!)"}</option>
+                                          <option value="Xenova/whisper-small">{uiLang === 'he' ? "Small (מדויק יותר, דורש מחשב חזק)" : "Small (More Accurate, Requires Strong PC)"}</option>
+                                      </select>
+                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
+                                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                      </div>
+                                  </div>
                                 </div>
                               </div>
+                              <button onClick={processFileLocal} disabled={status === 'processing'} className="w-full mt-4 bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-[0_8px_25px_rgba(79,70,229,0.4)] hover:-translate-y-1 transition-all flex justify-center items-center gap-3 text-lg">
+                                <Activity size={24} className="animate-pulse" /> {t.startProcessing}
+                              </button>
                             </div>
-                          </div>
-                        </div>
-                      )}
+                          )}
 
-                      {/* Error State */}
-                      {status === 'error' && (
-                        <div className="animate-fade-in bg-white border border-red-200 rounded-xl sm:rounded-2xl p-6 sm:p-8 flex flex-col items-center gap-3 sm:gap-4 text-center shadow-sm relative overflow-hidden">
-                          <div className="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
-                          <div className="bg-red-50 p-3 sm:p-4 rounded-full">
-                            <AlertCircle className="text-red-500 w-8 h-8 sm:w-10 sm:h-10" />
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-slate-800 text-lg sm:text-xl mb-1 sm:mb-2">אופס, משהו השתבש</h4>
-                            <p className="text-slate-600 text-xs sm:text-sm">{errorMessage}</p>
-                          </div>
-                          <button 
-                            onClick={() => setStatus('idle')}
-                            className="mt-2 sm:mt-4 bg-white border border-slate-300 text-slate-700 px-6 sm:px-8 py-2 sm:py-2.5 rounded-lg sm:rounded-xl hover:bg-slate-50 hover:text-slate-900 font-bold transition-all shadow-sm text-sm sm:text-base"
-                          >
-                            נסה שוב
-                          </button>
-                        </div>
-                      )}
+                          {status === 'processing' && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-10 flex flex-col items-center text-center relative overflow-hidden border border-slate-200/60 dark:border-slate-700/60 shadow-inner">
 
-                      {/* Complete State */}
-                      {status === 'complete' && (
-                        <div className="animate-fade-in space-y-4 sm:space-y-6">
-                          
-                          <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl sm:rounded-2xl p-5 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-4 sm:gap-5 shadow-lg text-white relative overflow-hidden">
-                            <div className="absolute -right-4 -top-4 sm:-right-6 sm:-top-6 opacity-10">
-                              <CheckCircle className="w-24 h-24 sm:w-[120px] sm:h-[120px]" />
+                              <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-3">{statusText}</h3>
+                              <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 max-w-sm">{t.processingWarn}</p>
+                              
+                              <div className="w-full max-w-md">
+                                  <div className="flex justify-between text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">
+                                      <span>{t.progress}</span>
+                                      <span dir="ltr" className="text-indigo-600 dark:text-indigo-400">{progress}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden shadow-inner">
+                                    <div className="h-full bg-gradient-to-l from-indigo-500 to-purple-500 transition-all duration-300 relative" style={{ width: `${progress}%` }}>
+                                        <div className="absolute inset-0 w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[stripes_1s_linear_infinite]"></div>
+                                    </div>
+                                  </div>
+                              </div>
                             </div>
-                            <div className="bg-white/20 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl backdrop-blur-md border border-white/30 shrink-0 relative z-10">
-                              <CheckCircle className="text-white w-6 h-6 sm:w-8 sm:h-8" />
-                            </div>
-                            <div className="relative z-10">
-                              <h4 className="font-bold text-xl sm:text-2xl mb-1 sm:mb-1.5">הכיתוביות מוכנות!</h4>
-                              <p className="text-emerald-50 font-medium text-xs sm:text-sm">קובץ הוידאו פוענח בהצלחה על ידי הבינה המלאכותית.</p>
-                            </div>
-                            <div className="sm:mr-auto shrink-0 relative z-10 pt-2 sm:pt-0 w-full sm:w-auto">
-                                <button 
-                                  onClick={downloadSrt}
-                                  className="w-full sm:w-auto bg-white text-emerald-700 hover:bg-emerald-50 hover:scale-105 font-bold py-2.5 sm:py-3 px-5 sm:px-6 rounded-lg sm:rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 text-sm sm:text-base"
-                                >
-                                  <Download size={18} className="sm:w-5 sm:h-5" />
-                                  שמור קובץ (.srt)
+                          )}
+
+                          {status === 'complete' && (
+                            <div className="space-y-6 animate-fade-in">
+                                
+                                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl p-6 sm:p-8 text-white flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden">
+                                    <div className="absolute -right-10 -top-10 opacity-10"><CheckCircle size={150} /></div>
+                                    <div className="flex flex-col sm:flex-row items-center gap-5 relative z-10 text-center sm:text-right">
+                                        <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm border border-white/30 shadow-inner"><CheckCircle size={36}/></div>
+                                        <div>
+                                            <h4 className="font-extrabold text-2xl mb-1">{t.readyTitle}</h4>
+                                            <p className="text-emerald-50 text-sm font-medium opacity-90">{t.readyDesc}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 w-full sm:w-auto relative z-10">
+                                        <button onClick={copyToClipboard} className="flex-1 sm:flex-none bg-emerald-700/50 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow border border-emerald-500/30 flex items-center justify-center gap-2">
+                                            {copied ? <Check size={18} /> : <Copy size={18} />}
+                                            {copied ? t.copied : t.copy}
+                                        </button>
+                                        <button onClick={downloadSrt} className="flex-1 sm:flex-none bg-white text-emerald-700 hover:bg-emerald-50 font-bold py-3 px-6 rounded-xl hover:scale-105 transition-all shadow-lg flex items-center justify-center gap-2">
+                                            <Download size={18}/> {t.downloadBtn} {exportFormat.toUpperCase()}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Live Editor */}
+                                <div className="bg-[#0f172a] rounded-2xl overflow-hidden shadow-2xl border border-slate-700 focus-within:border-indigo-500 transition-colors">
+                                    <div className="bg-slate-900 px-5 py-3.5 flex items-center justify-between border-b border-slate-800">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex gap-2">
+                                                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                            </div>
+                                            <span className="text-slate-400 text-sm font-mono tracking-wider">{t.editorTitle}</span>
+                                        </div>
+                                        <FileText size={16} className="text-slate-500" />
+                                    </div>
+                                    <div className="relative">
+                                        <textarea 
+                                            value={srtResult}
+                                            onChange={(e) => setSrtResult(e.target.value)}
+                                            style={{ fontSize: editorFontSize }}
+                                            className="w-full bg-transparent text-slate-300 leading-relaxed font-mono p-6 outline-none custom-scrollbar resize-y min-h-[300px] transition-all"
+                                            dir="ltr"
+                                            spellCheck="false"
+                                            placeholder="..."
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Gemini AI Features */}
+                                <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-xl border border-slate-200 dark:border-slate-800 mt-6 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 dark:bg-indigo-900/20 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                                    
+                                    <div className="flex justify-between items-start relative z-10 mb-4">
+                                        <h4 className="font-bold text-slate-800 dark:text-white text-lg flex items-center gap-2">
+                                            <Sparkles className="text-indigo-500" size={20} />
+                                            {t.aiFeatures}
+                                        </h4>
+                                        
+                                        {geminiApiKey ? (
+                                            <div className="flex items-center gap-2 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                                {t.apiConnected}
+                                                <button onClick={() => setShowApiKeyModal(true)} className="ml-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">{uiLang === 'he' ? 'שנה מפתח' : 'Change Key'}</button>
+                                            </div>
+                                        ) : (
+                                            <button onClick={() => setShowApiKeyModal(true)} className="text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-600 transition-colors">
+                                                {t.setApi}
+                                            </button>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-3 relative z-10">
+                                        <button 
+                                            onClick={() => triggerLlmAction('summary')}
+                                            disabled={isLlmLoading}
+                                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 font-bold py-2.5 px-5 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            <AlignLeft size={18} /> {t.summary}
+                                        </button>
+                                        <button 
+                                            onClick={() => triggerLlmAction('grammar')}
+                                            disabled={isLlmLoading}
+                                            className="bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:text-purple-300 font-bold py-2.5 px-5 rounded-xl border border-purple-200 dark:border-purple-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            <CheckSquare size={18} /> {t.grammar}
+                                        </button>
+                                        <button 
+                                            onClick={() => triggerLlmAction('topics')}
+                                            disabled={isLlmLoading}
+                                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300 font-bold py-2.5 px-5 rounded-xl border border-blue-200 dark:border-blue-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            <List size={18} /> {t.topics}
+                                        </button>
+                                        <button 
+                                            onClick={() => triggerLlmAction('cinematic')}
+                                            disabled={isLlmLoading}
+                                            className="bg-pink-50 hover:bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:hover:bg-pink-900/50 dark:text-pink-300 font-bold py-2.5 px-5 rounded-xl border border-pink-200 dark:border-pink-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            <Wand2 size={18} /> {t.cinematic}
+                                        </button>
+                                    </div>
+
+                                    {isLlmLoading && (
+                                        <div className="mt-6 flex items-center justify-center text-indigo-600 dark:text-indigo-400 gap-3 bg-slate-50 dark:bg-slate-800 p-6 rounded-xl border border-slate-100 dark:border-slate-700">
+                                            <Loader2 className="animate-spin" size={24} />
+                                            <span className="font-medium">...</span>
+                                        </div>
+                                    )}
+
+                                    {llmError && (
+                                        <div className="mt-6 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-900/50 font-bold flex items-center gap-2">
+                                            <AlertCircle size={20} /> {llmError}
+                                        </div>
+                                    )}
+
+                                    {llmResult && !isLlmLoading && (
+                                        <div className="mt-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-inner">
+                                            <div className="bg-slate-100 dark:bg-slate-900 px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">AI:</span>
+                                            </div>
+                                            <div className="p-5">
+                                                <pre className="text-slate-800 dark:text-slate-200 text-sm font-sans whitespace-pre-wrap leading-relaxed">{llmResult}</pre>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button onClick={resetApp} className="w-full py-4 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm mt-6">
+                                    {t.startOver}
                                 </button>
                             </div>
-                          </div>
+                          )}
 
-                          <div className="bg-[#0f172a] rounded-xl sm:rounded-2xl overflow-hidden shadow-xl border border-slate-800 relative group">
-                            {/* Terminal Header */}
-                            <div className="bg-slate-900 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between border-b border-slate-800">
-                              <div className="flex gap-1.5 sm:gap-2">
-                                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-500/80"></div>
-                                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-yellow-500/80"></div>
-                                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-500/80"></div>
-                              </div>
-                              <div className="flex items-center gap-1.5 sm:gap-2 text-slate-400 text-[10px] sm:text-xs font-mono">
-                                <FileText size={12} className="sm:w-[14px] sm:h-[14px]" />
-                                output.srt
-                              </div>
+                          {status === 'error' && (
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-2xl p-8 text-center flex flex-col items-center gap-4 shadow-sm animate-fade-in">
+                                <div className="bg-red-100 dark:bg-red-900/50 p-4 rounded-full text-red-500 dark:text-red-400"><AlertCircle size={40}/></div>
+                                <div>
+                                    <h4 className="font-bold text-red-800 dark:text-red-300 text-lg mb-1">{t.errorTitle}</h4>
+                                    <p className="font-medium text-red-600 dark:text-red-400">{errorMessage}</p>
+                                </div>
+                                <button onClick={() => setStatus('idle')} className="mt-4 px-8 py-2.5 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 text-sm font-bold text-red-700 dark:text-red-400 rounded-xl shadow-sm hover:bg-red-50 dark:hover:bg-slate-700 transition-all">{t.tryAgain}</button>
                             </div>
-                            {/* Terminal Content */}
-                            <div className="p-3 sm:p-5">
-                                <pre className="text-slate-300 text-[10px] sm:text-sm font-mono whitespace-pre-wrap overflow-y-auto max-h-48 sm:max-h-64 custom-scrollbar selection:bg-slate-700 selection:text-white leading-relaxed" dir="ltr">
-                                  {srtResult}
-                                </pre>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-center pt-1 sm:pt-2">
-                            <button 
-                              onClick={resetApp}
-                              className="bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-bold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl transition-all shadow-sm w-full sm:w-auto text-sm sm:text-base"
-                            >
-                              עבד קובץ נוסף
-                            </button>
-                          </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              </main>
-              
-              {/* Mobile Storage Manager (Visible only on small screens) */}
-              <div className="mt-6 sm:hidden flex items-center justify-center gap-2 bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm rounded-full py-2 px-4">
-                <HardDrive size={14} className="text-indigo-500" />
-                <span className="text-xs font-medium text-slate-600">מטמון: <span className="font-bold text-slate-800" dir="ltr">{storageUsedMB} MB</span></span>
-                {parseFloat(storageUsedMB) > 0 && (
-                  <button 
-                    onClick={clearStorage}
-                    className="text-slate-400 hover:text-red-500 ml-1.5 p-1 hover:bg-red-50 rounded-full"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
+                  </main>
               </div>
 
+              {/* Mobile Footer Status */}
+              <div className="mt-8 sm:hidden flex flex-col items-center gap-3 w-full max-w-sm">
+                 <div className="flex items-center justify-between w-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200/60 dark:border-slate-700/60 shadow-sm rounded-full py-2.5 px-5">
+                    <button 
+                        onClick={() => setUiLang(uiLang === 'he' ? 'en' : 'he')} 
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
+                    >
+                        <Globe size={14} /> {uiLang === 'he' ? 'EN' : 'HE'}
+                    </button>
+                    <button 
+                        onClick={() => setShowSettingsModal(true)} 
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
+                    >
+                        <Settings size={14} /> {t.settings}
+                    </button>
+                    <button 
+                        onClick={() => setShowApiKeyModal(true)} 
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}
+                    >
+                        <Key size={14} />
+                        {geminiApiKey ? t.apiConnected : t.setApi}
+                    </button>
+                 </div>
+              </div>
+              
+              {/* Settings Modal */}
+              {showSettingsModal && (
+                  <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-all duration-300 p-4">
+                      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                              <Settings className="text-indigo-500" size={20} />
+                              {t.settingsTitle}
+                          </h3>
+                          
+                          <div className="space-y-6 mb-8">
+                              {/* Theme Toggle */}
+                              <div>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">{t.theme}</label>
+                                  <div className="flex gap-3">
+                                      <button 
+                                          onClick={() => setTheme('light')}
+                                          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 border-2 font-bold transition-all ${theme === 'light' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                      >
+                                          <Sun size={18} /> {t.light}
+                                      </button>
+                                      <button 
+                                          onClick={() => setTheme('dark')}
+                                          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 border-2 font-bold transition-all ${theme === 'dark' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                      >
+                                          <Moon size={18} /> {t.dark}
+                                      </button>
+                                  </div>
+                              </div>
+
+                              {/* Export Format */}
+                              <div>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">{t.exportFormatLabel}</label>
+                                  <div className="flex gap-3">
+                                      {['srt', 'vtt', 'txt'].map(fmt => (
+                                          <button
+                                              key={fmt}
+                                              onClick={() => setExportFormat(fmt)}
+                                              className={`flex-1 py-2 px-3 rounded-xl font-bold transition-all border-2 ${exportFormat === fmt ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                          >
+                                              {fmt.toUpperCase()}
+                                          </button>
+                                      ))}
+                                  </div>
+                              </div>
+
+                              {/* Editor Font Size */}
+                              <div>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">{t.fontSizeLabel}</label>
+                                  <div className="flex gap-3">
+                                      {[
+                                          {id: '13px', label: t.fontSmall, icon: <Type size={14}/>},
+                                          {id: '15px', label: t.fontMedium, icon: <Type size={18}/>},
+                                          {id: '18px', label: t.fontLarge, icon: <Type size={22}/>}
+                                      ].map(size => (
+                                          <button
+                                              key={size.id}
+                                              onClick={() => setEditorFontSize(size.id)}
+                                              className={`flex-1 py-2 px-2 rounded-xl font-bold transition-all border-2 flex items-center justify-center gap-1.5 ${editorFontSize === size.id ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                          >
+                                              {size.icon}
+                                              <span className="text-sm">{size.label}</span>
+                                          </button>
+                                      ))}
+                                  </div>
+                              </div>
+                              
+                              {/* Parallel Chunks Slider */}
+                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                                  <label className="flex justify-between items-center text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 mt-4">
+                                      <span>{t.chunks}</span>
+                                      <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-0.5 rounded font-mono">{numChunks}</span>
+                                  </label>
+                                  <input 
+                                      type="range" 
+                                      min="4" 
+                                      max="64" 
+                                      step="4"
+                                      value={numChunks}
+                                      onChange={(e) => setNumChunks(parseInt(e.target.value))}
+                                      className="w-full accent-indigo-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700"
+                                  />
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
+                                      {t.chunksDesc}
+                                  </p>
+                              </div>
+                          </div>
+                          
+                          <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
+                              <button 
+                                  onClick={() => setShowSettingsModal(false)}
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl transition-colors w-full sm:w-auto"
+                              >
+                                  {t.closeSave}
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              )}
+
+              {/* API Key Modal */}
+              {showApiKeyModal && (
+                  <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-all duration-300 p-4">
+                      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in border border-slate-200 dark:border-slate-800">
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
+                              <Lock className="text-indigo-500" size={20} />
+                              {t.apiTitle}
+                          </h3>
+                          <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed">
+                              {t.apiDesc}
+                          </p>
+                          
+                          <div className="mb-6">
+                              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.apiKeyLabel}</label>
+                              <input 
+                                  type="password" 
+                                  value={tempApiKey}
+                                  onChange={(e) => setTempApiKey(e.target.value)}
+                                  placeholder={t.apiKeyPlaceholder}
+                                  className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 font-mono text-left dark:text-white"
+                                  dir="ltr"
+                              />
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                                  {t.noApiKey} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">{t.getApiKey}</a>.
+                              </p>
+                          </div>
+                          
+                          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
+                              <div className="flex gap-3 mt-4 sm:mt-0">
+                                  {geminiApiKey && (
+                                      <button 
+                                          onClick={() => { handleRemoveApiKey(); setShowApiKeyModal(false); }}
+                                          className="px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                                      >
+                                          {t.deleteKey}
+                                      </button>
+                                  )}
+                                  <button 
+                                      onClick={() => { setShowApiKeyModal(false); setTempApiKey(''); setPendingAction(null); }}
+                                      className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                                  >
+                                      {t.cancel}
+                                  </button>
+                              </div>
+                              <button 
+                                  onClick={handleSaveApiKey}
+                                  disabled={!tempApiKey.trim()}
+                                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-800/50 text-white font-bold py-2 px-6 rounded-xl transition-colors"
+                              >
+                                  {t.closeSave}
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              )}
             </div>
           );
         }
-
-        // --- Custom Animations ---
-        const style = document.createElement('style');
-        style.innerHTML = `
-          @keyframes shimmer {
-            100% { transform: translateX(100%); }
-          }
-          @keyframes stripes {
-            from { background-position: 1rem 0; }
-            to { background-position: 0 0; }
-          }
-          .animate-fade-in {
-            animation: fadeIn 0.4s ease-out;
-          }
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-        `;
-        document.head.appendChild(style);
 
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
