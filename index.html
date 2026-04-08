@@ -96,11 +96,45 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useRef, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity, LogOut, Users, Mail, Copy, Check, AlignLeft, CheckSquare, List, Key, Settings, Moon, Sun, Globe, Wand2, Type, FileJson } from 'lucide-react';
+        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity, LogOut, Users, Mail, Copy, Check, AlignLeft, CheckSquare, List, Key, Settings, Moon, Sun, Globe, Wand2, Type, FileJson, Eye, EyeOff } from 'lucide-react';
 
         import { initializeApp } from 'firebase/app';
         import { getAuth, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
         import { getFirestore, doc, setDoc, getDocs, collection, query } from 'firebase/firestore';
+
+        // --- שפות נתמכות במערכת ---
+        const SUPPORTED_LANGUAGES = [
+            { code: 'he', nllb: 'heb_Hebr', name: { he: 'עברית', en: 'Hebrew' } },
+            { code: 'en', nllb: 'eng_Latn', name: { he: 'אנגלית', en: 'English' } },
+            { code: 'ru', nllb: 'rus_Cyrl', name: { he: 'רוסית', en: 'Russian' } },
+            { code: 'ar', nllb: 'arb_Arab', name: { he: 'ערבית', en: 'Arabic' } },
+            { code: 'es', nllb: 'spa_Latn', name: { he: 'ספרדית', en: 'Spanish' } },
+            { code: 'fr', nllb: 'fra_Latn', name: { he: 'צרפתית', en: 'French' } },
+            { code: 'de', nllb: 'deu_Latn', name: { he: 'גרמנית', en: 'German' } },
+            { code: 'it', nllb: 'ita_Latn', name: { he: 'איטלקית', en: 'Italian' } },
+            { code: 'pt', nllb: 'por_Latn', name: { he: 'פורטוגזית', en: 'Portuguese' } },
+            { code: 'nl', nllb: 'nld_Latn', name: { he: 'הולנדית', en: 'Dutch' } },
+            { code: 'ja', nllb: 'jpn_Jpan', name: { he: 'יפנית', en: 'Japanese' } },
+            { code: 'ko', nllb: 'kor_Hang', name: { he: 'קוריאנית', en: 'Korean' } },
+            { code: 'zh', nllb: 'zho_Hans', name: { he: 'סינית', en: 'Chinese' } },
+            { code: 'hi', nllb: 'hin_Deva', name: { he: 'הינדית', en: 'Hindi' } },
+            { code: 'tr', nllb: 'tur_Latn', name: { he: 'טורקית', en: 'Turkish' } },
+            { code: 'pl', nllb: 'pol_Latn', name: { he: 'פולנית', en: 'Polish' } },
+            { code: 'uk', nllb: 'ukr_Cyrl', name: { he: 'אוקראינית', en: 'Ukrainian' } },
+            { code: 'vi', nllb: 'vie_Latn', name: { he: 'ויאטנמית', en: 'Vietnamese' } },
+            { code: 'th', nllb: 'tha_Thai', name: { he: 'תאילנדית', en: 'Thai' } },
+            { code: 'id', nllb: 'ind_Latn', name: { he: 'אינדונזית', en: 'Indonesian' } },
+            { code: 'el', nllb: 'ell_Grek', name: { he: 'יוונית', en: 'Greek' } },
+            { code: 'cs', nllb: 'ces_Latn', name: { he: 'צ׳כית', en: 'Czech' } },
+            { code: 'sv', nllb: 'swe_Latn', name: { he: 'שוודית', en: 'Swedish' } },
+            { code: 'ro', nllb: 'ron_Latn', name: { he: 'רומנית', en: 'Romanian' } },
+            { code: 'hu', nllb: 'hun_Latn', name: { he: 'הונגרית', en: 'Hungarian' } },
+            { code: 'da', nllb: 'dan_Latn', name: { he: 'דנית', en: 'Danish' } },
+            { code: 'fi', nllb: 'fin_Latn', name: { he: 'פינית', en: 'Finnish' } },
+            { code: 'no', nllb: 'nob_Latn', name: { he: 'נורווגית', en: 'Norwegian' } },
+            { code: 'bn', nllb: 'ben_Beng', name: { he: 'בנגלית', en: 'Bengali' } },
+            { code: 'ur', nllb: 'urd_Arab', name: { he: 'אורדו', en: 'Urdu' } }
+        ];
 
         // Initialize Firebase
         let app, auth, db, appId;
@@ -310,26 +344,24 @@
                         self.postMessage({ type: 'status', text: 'המודל מוכן! מבצע פענוח קולי ברקע (המסך נשאר פעיל)...' });
                         self.postMessage({ type: 'progress_percent', percent: 40 });
 
-                        let whisperLang = 'he';
-                        if (data.mode === 'transcribe_en' || data.mode === 'translate_en_he') {
-                            whisperLang = 'en';
-                        }
-
-                        const output = await transcriber(data.audioData, {
-                            language: whisperLang,
+                        let transcriberConfig = {
                             task: 'transcribe',
                             chunk_length_s: 30,
                             stride_length_s: 5,
                             return_timestamps: true,
-                        });
+                        };
+                        
+                        if (data.sourceLang !== 'auto') {
+                            transcriberConfig.language = data.sourceLang;
+                        }
+
+                        const output = await transcriber(data.audioData, transcriberConfig);
 
                         if (!output || !output.chunks || output.chunks.length === 0) {
                             throw new Error('לא הצלחנו לזהות דיבור ברור בקובץ.');
                         }
 
-                        const needsTranslation = data.mode.startsWith('translate_');
-
-                        if (needsTranslation) {
+                        if (data.needsTranslation) {
                             self.postMessage({ type: 'status', text: 'הפענוח הסתיים! מכין מודל תרגום...' });
                             self.postMessage({ type: 'progress_percent', percent: 60 });
                             
@@ -348,8 +380,8 @@
 
                             self.postMessage({ type: 'status', text: 'מודל תרגום מוכן! מתרגם משפטים ברקע...' });
                             
-                            const src_lang = data.mode === 'translate_en_he' ? 'eng_Latn' : 'heb_Hebr';
-                            const tgt_lang = data.mode === 'translate_en_he' ? 'heb_Hebr' : 'eng_Latn';
+                            const src_lang = data.nllbSrc;
+                            const tgt_lang = data.nllbTgt;
 
                             for (let i = 0; i < output.chunks.length; i++) {
                                 self.postMessage({ type: 'progress_percent', percent: 80 + Math.round((i / output.chunks.length) * 20) });
@@ -387,7 +419,11 @@
           const [statusText, setStatusText] = useState('');
           const [srtResult, setSrtResult] = useState('');
           const [modelSize, setModelSize] = useState('Xenova/whisper-base');
-          const [mode, setMode] = useState('transcribe_he');
+          
+          // Language Settings
+          const [sourceLang, setSourceLang] = useState(() => localStorage.getItem('sourceLang') || 'auto');
+          const [targetLang, setTargetLang] = useState(() => localStorage.getItem('targetLang') || 'original');
+          
           const [isPersistent, setIsPersistent] = useState(false);
           const [storageUsedMB, setStorageUsedMB] = useState('0.00');
           const [isDragging, setIsDragging] = useState(false);
@@ -403,6 +439,10 @@
           const [tempApiKey, setTempApiKey] = useState('');
           const [pendingAction, setPendingAction] = useState(null);
           
+          // API Key Validation State
+          const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
+          const isApiKeyValid = tempApiKey.trim() === '' || tempApiKey.trim().startsWith('AIza');
+          
           // Theme & Additional Settings States
           const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
           const [numChunks, setNumChunks] = useState(() => parseInt(localStorage.getItem('numChunks')) || 16);
@@ -410,9 +450,13 @@
           const [editorFontSize, setEditorFontSize] = useState(() => localStorage.getItem('editorFontSize') || '15px');
           const [threads, setThreads] = useState(() => parseInt(localStorage.getItem('threads')) || 0);
           
+          // --- Subtitle Customization States ---
+          const [maxCharsPerLine, setMaxCharsPerLine] = useState(() => parseInt(localStorage.getItem('maxCharsPerLine')) || 42);
+          const [removePunctuation, setRemovePunctuation] = useState(() => localStorage.getItem('removePunctuation') === 'true');
+          
           const [showSettingsModal, setShowSettingsModal] = useState(false);
           const [workerSession, setWorkerSession] = useState(0);
-          const processingSessionRef = useRef(0); // רפרנס למניעת התנגשויות של תהליכים ישנים
+          const processingSessionRef = useRef(0);
           const [uiLang, setUiLang] = useState(() => localStorage.getItem('uiLang') || 'he');
           
           const fileInputRef = useRef(null);
@@ -434,6 +478,16 @@
           useEffect(() => localStorage.setItem('exportFormat', exportFormat), [exportFormat]);
           useEffect(() => localStorage.setItem('editorFontSize', editorFontSize), [editorFontSize]);
           useEffect(() => localStorage.setItem('threads', threads.toString()), [threads]);
+          useEffect(() => localStorage.setItem('maxCharsPerLine', maxCharsPerLine.toString()), [maxCharsPerLine]);
+          useEffect(() => localStorage.setItem('removePunctuation', removePunctuation.toString()), [removePunctuation]);
+          
+          useEffect(() => localStorage.setItem('sourceLang', sourceLang), [sourceLang]);
+          useEffect(() => localStorage.setItem('targetLang', targetLang), [targetLang]);
+          
+          const maxCharsRef = useRef(maxCharsPerLine);
+          const removePunctRef = useRef(removePunctuation);
+          useEffect(() => { maxCharsRef.current = maxCharsPerLine; }, [maxCharsPerLine]);
+          useEffect(() => { removePunctRef.current = removePunctuation; }, [removePunctuation]);
           
           useEffect(() => {
               localStorage.setItem('uiLang', uiLang);
@@ -441,11 +495,10 @@
               document.documentElement.lang = uiLang;
           }, [uiLang]);
 
-          // --- Firebase Auth & Setup (Transparent Authentication with Fallback) ---
+          // --- Firebase Auth & Setup ---
           useEffect(() => {
               const initCanvasAuth = async () => {
                   if (isFirebaseDummy) {
-                      // Bypass auth entirely if dummy environment to prevent console errors
                       setUser({ uid: 'local-user', displayName: 'משתמש מקומי', email: 'local@example.com' });
                       setIsAuthLoading(false);
                       return;
@@ -494,7 +547,6 @@
               }
           }, []);
 
-          // Fetch admin stats
           useEffect(() => {
               if (!isFirebaseDummy && user && user.email === 'hyywry013@gmail.com') {
                   const fetchAdminStats = async () => {
@@ -516,9 +568,7 @@
                           });
                           
                           setAdminStats({ total, currentMonth: monthCount });
-                      } catch (e) {
-                          // Silently fail
-                      }
+                      } catch (e) {}
                   };
                   fetchAdminStats();
               }
@@ -542,7 +592,7 @@
                 else if (type === 'progress_percent') setProgress(percent);
                 else if (type === 'progress') handleWorkerProgress(step, data);
                 else if (type === 'complete') {
-                    const srt = formatSRT(chunks);
+                    const srt = formatSRT(chunks, maxCharsRef.current, removePunctRef.current);
                     setSrtResult(srt);
                     setProgress(100);
                     setStatus('complete');
@@ -688,12 +738,44 @@
             return `${hh}:${mm}:${ss},${ms}`;
           };
 
-          const formatSRT = (chunks) => {
+          const formatSRT = (chunks, maxChars = 42, removePunct = false) => {
+            const breakText = (text) => {
+                let processed = text.trim();
+                if (removePunct) {
+                    processed = processed.replace(/[.,!?]/g, '');
+                }
+                if (!maxChars || maxChars >= 100) return processed;
+                
+                const words = processed.split(' ');
+                let lines = [];
+                let currentLine = '';
+                for (const word of words) {
+                    if ((currentLine + ' ' + word).trim().length <= maxChars) {
+                        currentLine = (currentLine + ' ' + word).trim();
+                    } else {
+                        if (currentLine) lines.push(currentLine);
+                        currentLine = word;
+                    }
+                }
+                if (currentLine) lines.push(currentLine);
+                return lines.join('\n');
+            };
+
             return chunks.map((chunk, index) => {
-              let startTime = formatTime(chunk.timestamp[0]);
-              let endTime = formatTime(chunk.timestamp[1] || chunk.timestamp[0] + 2);
-              return `${index + 1}\n${startTime} --> ${endTime}\n${chunk.text.trim()}`;
+              // הגנת חותמות זמן למקרה שהמודל נכשל בזיהוי זמנים ספציפיים
+              const ts = chunk.timestamp || [0, 2];
+              let startTime = formatTime(ts[0]);
+              let endTime = formatTime(ts[1] || ts[0] + 2);
+              return `${index + 1}\n${startTime} --> ${endTime}\n${breakText(chunk.text)}`;
             }).join('\n\n');
+          };
+
+          const handleSourceLangChange = (e) => {
+              const val = e.target.value;
+              setSourceLang(val);
+              if (val === 'auto') {
+                  setTargetLang('original');
+              }
           };
 
           const processFileLocal = async () => {
@@ -754,9 +836,20 @@
               setProgress(12);
               setStatusText(uiLang === 'he' ? 'מעביר נתונים למנוע הבינה המלאכותית (Web Worker)...' : 'Transferring data to AI engine...');
 
+              const isAutoSource = sourceLang === 'auto';
+              const isOriginalTarget = targetLang === 'original';
+              const needsTranslation = !isAutoSource && !isOriginalTarget && sourceLang !== targetLang;
+
+              let nllbSrc = null;
+              let nllbTgt = null;
+              if (needsTranslation) {
+                  nllbSrc = SUPPORTED_LANGUAGES.find(l => l.code === sourceLang).nllb;
+                  nllbTgt = SUPPORTED_LANGUAGES.find(l => l.code === targetLang).nllb;
+              }
+
               workerRef.current.postMessage({
                   type: 'process',
-                  data: { audioData, modelSize, mode, numChunks, threads }
+                  data: { audioData, modelSize, sourceLang, targetLang, needsTranslation, nllbSrc, nllbTgt, numChunks, threads }
               }, [audioData.buffer]);
               
               decodedAudio = null;
@@ -802,10 +895,11 @@
             a.href = url;
             
             const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-            let suffix = '_he';
-            if(mode === 'translate_en_he') suffix = '_translated_he';
-            if(mode === 'transcribe_en') suffix = '_en';
-            if(mode === 'translate_he_en') suffix = '_translated_en';
+            
+            let suffix = sourceLang === 'auto' ? '_auto' : `_${sourceLang}`;
+            if (sourceLang !== 'auto' && targetLang !== 'original' && sourceLang !== targetLang) {
+                suffix = `_${sourceLang}_to_${targetLang}`;
+            }
             
             a.download = `${originalName || 'subtitles'}${suffix}.${exportFormat}`;
             document.body.appendChild(a);
@@ -836,6 +930,7 @@
                   localStorage.setItem('gemini_api_key', tempApiKey.trim());
                   setGeminiApiKey(tempApiKey.trim());
                   setShowApiKeyModal(false);
+                  setIsApiKeyVisible(false);
                   
                   if (pendingAction) {
                       handleLlmAction(pendingAction, tempApiKey.trim());
@@ -848,6 +943,7 @@
               localStorage.removeItem('gemini_api_key');
               setGeminiApiKey('');
               setTempApiKey('');
+              setIsApiKeyVisible(false);
           };
 
           const triggerLlmAction = (actionType) => {
@@ -888,76 +984,81 @@
 
               const payload = {
                   contents: [{ parts: [{ text: `${promptContext}\n\n${cleanText}` }] }],
-                  systemInstruction: { parts: [{ text: uiLang === 'he' ? "אתה עוזר בינה מלאכותית. ענה רק בעברית ושמור על שפה נקייה ומכבדת." : "You are an AI assistant. Answer in English and maintain clean, respectful language." }] }
+                  systemInstruction: { parts: [{ text: uiLang === 'he' ? "אתה עורך תוכן חכם. ענה תמיד באותה שפה של טקסט המקור (אלא אם התבקשת לתרגם), ושמור על שפה נקייה ומכבדת." : "You are a smart content editor. Always respond in the same language as the source text (unless asked to translate), and maintain clean, respectful language." }] }
               };
 
               let retries = 3;
               let delay = 1000;
               let success = false;
 
-              while (retries > 0 && !success) {
-                  const controller = new AbortController();
-                  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout for API calls
-                  
-                  try {
-                      // שימוש במודל יציב (1.5-flash) שפתוח בוודאות לכל מפתח ציבורי מ-Google AI Studio
-                      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKeyToUse}`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(payload),
-                          signal: controller.signal
-                      });
-                      clearTimeout(timeoutId);
+              try {
+                  while (retries > 0 && !success) {
+                      const controller = new AbortController();
+                      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout for API calls
                       
-                      if (!response.ok) {
-                          let errorData = {};
-                          try { errorData = await response.json(); } catch(e) {}
-                          const apiMsg = errorData.error?.message || response.statusText;
-                          
-                          if (response.status === 403 || response.status === 401 || (response.status === 400 && apiMsg.includes('API key'))) {
-                              throw new Error('AUTH_ERROR');
-                          }
-                          throw new Error(`Server Error (${response.status}): ${apiMsg}`);
-                      }
-                      
-                      let result;
                       try {
-                          result = await response.json();
-                      } catch (jsonErr) {
-                          throw new Error(uiLang === 'he' ? 'שגיאת שרת: לא התקבל מידע תקין משרתי Gemini. ייתכן שיש עומס.' : 'Server error: Invalid data received. High load possible.');
-                      }
-                      
-                      const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                      
-                      if (generatedText) {
-                          setLlmResult(generatedText);
-                          success = true;
-                      } else {
-                          throw new Error(uiLang === 'he' ? 'לא התקבל טקסט תקין מהמודל.' : 'No valid text received from the model.');
-                      }
-                  } catch (e) {
-                      clearTimeout(timeoutId);
-                      
-                      if (e.name === 'AbortError') {
-                         e.message = uiLang === 'he' ? 'הבקשה לקחה זמן רב מדי (Timeout). נסה שוב.' : 'Request timed out. Try again.';
-                      }
+                          // שימוש במודל יציב (1.5-flash) שפתוח בוודאות לכל מפתח ציבורי מ-Google AI Studio
+                          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKeyToUse}`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(payload),
+                              signal: controller.signal
+                          });
+                          clearTimeout(timeoutId);
+                          
+                          if (!response.ok) {
+                              let errorData = {};
+                              try { errorData = await response.json(); } catch(e) {}
+                              const apiMsg = errorData.error?.message || response.statusText;
+                              
+                              if (response.status === 403 || response.status === 401 || (response.status === 400 && apiMsg.includes('API key'))) {
+                                  throw new Error('AUTH_ERROR');
+                              }
+                              throw new Error(`Server Error (${response.status}): ${apiMsg}`);
+                          }
+                          
+                          let result;
+                          try {
+                              result = await response.json();
+                          } catch (jsonErr) {
+                              throw new Error(uiLang === 'he' ? 'שגיאת שרת: לא התקבל מידע תקין משרתי Gemini. ייתכן שיש עומס.' : 'Server error: Invalid data received. High load possible.');
+                          }
+                          
+                          let generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                          
+                          if (generatedText) {
+                              // ניקוי תגיות Markdown אוטומטי מה-AI במקרה של קוד
+                              generatedText = generatedText.replace(/^```[\s\S]*?\n/g, '').replace(/```$/g, '').trim();
+                              setLlmResult(generatedText);
+                              success = true;
+                          } else {
+                              throw new Error(uiLang === 'he' ? 'לא התקבל טקסט תקין מהמודל.' : 'No valid text received from the model.');
+                          }
+                      } catch (e) {
+                          clearTimeout(timeoutId);
+                          
+                          if (e.name === 'AbortError') {
+                             e.message = uiLang === 'he' ? 'הבקשה לקחה זמן רב מדי (Timeout). נסה שוב.' : 'Request timed out. Try again.';
+                          }
 
-                      if (e.message.includes('AUTH_ERROR')) {
-                          setLlmError(uiLang === 'he' ? 'מפתח ה-API לא תקין. המפתח הוסר מהמערכת, אנא הזן מפתח חוקי חדש.' : 'Invalid API key. The key was removed, please enter a valid one.');
-                          handleRemoveApiKey(); 
-                          break;
-                      }
-                      
-                      retries--;
-                      if (retries === 0) {
-                          setLlmError((uiLang === 'he' ? 'אירעה שגיאה בתקשורת עם ה-AI: ' : 'AI Communication error: ') + e.message);
-                      } else {
-                          await new Promise(r => setTimeout(r, delay));
-                          delay *= 2;
+                          if (e.message.includes('AUTH_ERROR')) {
+                              setLlmError(uiLang === 'he' ? 'מפתח ה-API לא תקין. המפתח הוסר מהמערכת, אנא הזן מפתח חוקי חדש.' : 'Invalid API key. The key was removed, please enter a valid one.');
+                              handleRemoveApiKey(); 
+                              break;
+                          }
+                          
+                          retries--;
+                          if (retries === 0) {
+                              setLlmError((uiLang === 'he' ? 'אירעה שגיאה בתקשורת עם ה-AI: ' : 'AI Communication error: ') + e.message);
+                          } else {
+                              await new Promise(r => setTimeout(r, delay));
+                              delay *= 2;
+                          }
                       }
                   }
+              } finally {
+                  setIsLlmLoading(false); // שחרור כפתורים בטוח בכל תרחיש
               }
-              setIsLlmLoading(false);
           };
 
           const resetApp = () => {
@@ -985,7 +1086,10 @@
                   dragTitle: "גרור קובץ וידאו או שמע לכאן",
                   dragDesc: "או לחץ כאן לבחירה מהמחשב (תומך עד 2GB)",
                   changeFile: "החלף קובץ",
-                  actionType: "סוג הפעולה:",
+                  sourceLangLabel: "שפת הדיבור בסרטון:",
+                  targetLangLabel: "שפת הכתוביות (תרגום):",
+                  autoDetect: "זיהוי אוטומטי (Auto)",
+                  originalLang: "שפת המקור (ללא תרגום)",
                   modelSize: "גודל ואיכות המודל:",
                   startProcessing: "התחל עיבוד ולמידת מכונה",
                   processingWarn: "הפעולה מתבצעת באופן מקומי לחלוטין על גבי מעבד המחשב שלך. אנא אל תסגור דף זה.",
@@ -1013,22 +1117,28 @@
                   dark: "כהה",
                   chunks: "פיצולי הורדה מקבילית (Chunks):",
                   chunksDesc: "קובע לכמה חלקים יפוצל המודל בעת ההורדה הראשונית. ערך גבוה מאיץ את ההורדה אך עלול לגרום לחסימות שרת במקרים מסוימים.",
-                  exportFormatLabel: "פורמט הורדה (ברירת מחדל):",
-                  fontSizeLabel: "גודל טקסט בעורך:",
-                  fontSmall: "קטן",
-                  fontMedium: "בינוני",
-                  fontLarge: "גדול",
                   cpuLabel: "כוח עיבוד (ליבות מעבד):",
                   cpuAuto: "אוטומטי (מומלץ)",
                   cpu1: "נמוך (ליבה 1) - חסכוני בסוללה",
                   cpu2: "בינוני (2 ליבות)",
                   cpu4: "גבוה (4 ליבות)",
                   cpu8: "מקסימלי (8 ליבות) - המהיר ביותר",
+                  subtitleSettingsTitle: "התאמה אישית של הכתוביות",
+                  exportFormatLabel: "פורמט הורדה (ברירת מחדל):",
+                  fontSizeLabel: "גודל טקסט בעורך:",
+                  fontSmall: "קטן",
+                  fontMedium: "בינוני",
+                  fontLarge: "גדול",
+                  maxCharsLabel: "אורך שורה מקסימלי (תווים):",
+                  maxCharsDesc: "מפצל אוטומטית כתוביות ארוכות לשורות קצרות. משפיע על פענוח של קבצים חדשים.",
+                  removePunctuationLabel: "הסרת סימני פיסוק (.,!?)",
+                  unlimited: "ללא הגבלה",
                   closeSave: "סגור ושמור",
                   apiTitle: "הגדרת מפתח Gemini API",
                   apiDesc: "כדי להשתמש בתכונות ה-AI המתקדמות (תמצות, הגהה, עריכה יצירתית), עליך לספק מפתח API משלך. המפתח נשמר מקומית בדפדפן שלך בלבד ולא נשלח לשום שרת זר.",
                   apiKeyLabel: "מפתח API:",
                   apiKeyPlaceholder: "הדבק את המפתח כאן (מתחיל ב-AIza...)",
+                  invalidKeyFormat: "שים לב: מפתח Gemini מתחיל בדרך כלל ב-'AIza'. ייתכן שהמפתח שגוי.",
                   noApiKey: "אין לך מפתח?",
                   getApiKey: "לחץ כאן כדי לייצר מפתח חינמי ב-Google AI Studio",
                   deleteKey: "מחק מפתח",
@@ -1047,7 +1157,10 @@
                   dragTitle: "Drag audio or video file here",
                   dragDesc: "Or click to select from your computer (Up to 2GB)",
                   changeFile: "Change File",
-                  actionType: "Action Type:",
+                  sourceLangLabel: "Spoken Language:",
+                  targetLangLabel: "Subtitle Language (Translation):",
+                  autoDetect: "Auto Detect",
+                  originalLang: "Original Language (No Translation)",
                   modelSize: "Model Size & Quality:",
                   startProcessing: "Start AI Processing",
                   processingWarn: "Processing locally on your computer's CPU. Please do not close this page.",
@@ -1075,22 +1188,28 @@
                   dark: "Dark",
                   chunks: "Parallel Download Chunks:",
                   chunksDesc: "Determines how many parts the model is split into during initial download. Higher value speeds up download but may cause server blocks.",
-                  exportFormatLabel: "Default Export Format:",
-                  fontSizeLabel: "Editor Font Size:",
-                  fontSmall: "Small",
-                  fontMedium: "Medium",
-                  fontLarge: "Large",
                   cpuLabel: "Processing Power (CPU Cores):",
                   cpuAuto: "Auto (Recommended)",
                   cpu1: "Low (1 Core) - Battery Saver",
                   cpu2: "Medium (2 Cores)",
                   cpu4: "High (4 Cores)",
                   cpu8: "Max (8 Cores) - Fastest",
+                  subtitleSettingsTitle: "Subtitle Customization",
+                  exportFormatLabel: "Default Export Format:",
+                  fontSizeLabel: "Editor Font Size:",
+                  fontSmall: "Small",
+                  fontMedium: "Medium",
+                  fontLarge: "Large",
+                  maxCharsLabel: "Max Characters per Line:",
+                  maxCharsDesc: "Automatically splits long subtitles into shorter lines. Affects new files.",
+                  removePunctuationLabel: "Remove Punctuation (.,!?)",
+                  unlimited: "Unlimited",
                   closeSave: "Close & Save",
                   apiTitle: "Set Gemini API Key",
                   apiDesc: "To use advanced AI features (summarization, proofreading, creative adaptation), you must provide your own API key. The key is saved locally in your browser and is not sent to any external server.",
                   apiKeyLabel: "API Key:",
                   apiKeyPlaceholder: "Paste key here (starts with AIza...)",
+                  invalidKeyFormat: "Note: Gemini API keys usually start with 'AIza'. This key might be invalid.",
                   noApiKey: "Don't have a key?",
                   getApiKey: "Click here to generate a free key in Google AI Studio",
                   deleteKey: "Delete Key",
@@ -1245,32 +1364,47 @@
                                 <Settings2 size={20} className="text-indigo-500 dark:text-indigo-400" />
                                 {t.settings}
                               </h4>
-                              <div className="grid md:grid-cols-2 gap-6 pt-2">
+                              <div className="grid md:grid-cols-3 gap-4 pt-2">
                                 <div className="space-y-2">
-                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.actionType}</label>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.sourceLangLabel}</label>
                                   <div className="relative">
-                                      <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm">
-                                          <optgroup label={uiLang === 'he' ? "עברית" : "Hebrew"}>
-                                            <option value="transcribe_he">{uiLang === 'he' ? "דיבור בעברית ➔ כתוביות בעברית" : "Hebrew Speech ➔ Hebrew Subtitles"}</option>
-                                            <option value="translate_he_en">{uiLang === 'he' ? "דיבור בעברית ➔ תרגום לאנגלית" : "Hebrew Speech ➔ English Translation"}</option>
-                                          </optgroup>
-                                          <optgroup label={uiLang === 'he' ? "אנגלית" : "English"}>
-                                            <option value="transcribe_en">{uiLang === 'he' ? "דיבור באנגלית ➔ כתוביות באנגלית" : "English Speech ➔ English Subtitles"}</option>
-                                            <option value="translate_en_he">{uiLang === 'he' ? "דיבור באנגלית ➔ תרגום לעברית" : "English Speech ➔ Hebrew Translation"}</option>
-                                          </optgroup>
+                                      <select disabled={status === 'processing'} value={sourceLang} onChange={handleSourceLangChange} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm disabled:opacity-50">
+                                          <option value="auto" className="font-bold text-indigo-600 dark:text-indigo-400">{t.autoDetect}</option>
+                                          {SUPPORTED_LANGUAGES.map(l => (
+                                              <option key={`src-${l.code}`} value={l.code}>{l.name[uiLang]}</option>
+                                          ))}
                                       </select>
                                       <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
-                                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                          <Globe className="h-5 w-5" />
+                                      </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.targetLangLabel}</label>
+                                  <div className="relative">
+                                      <select 
+                                          value={targetLang} 
+                                          onChange={(e) => setTargetLang(e.target.value)} 
+                                          disabled={sourceLang === 'auto' || status === 'processing'}
+                                          className={`w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm ${sourceLang === 'auto' ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900'} disabled:opacity-50`}
+                                      >
+                                          <option value="original" className="font-bold text-indigo-600 dark:text-indigo-400">{t.originalLang}</option>
+                                          {SUPPORTED_LANGUAGES.map(l => (
+                                              <option key={`tgt-${l.code}`} value={l.code}>{l.name[uiLang]}</option>
+                                          ))}
+                                      </select>
+                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
+                                          <Wand2 className="h-5 w-5" />
                                       </div>
                                   </div>
                                 </div>
                                 <div className="space-y-2">
                                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.modelSize}</label>
                                   <div className="relative">
-                                      <select value={modelSize} onChange={(e) => setModelSize(e.target.value)} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm">
-                                          <option value="Xenova/whisper-tiny">{uiLang === 'he' ? "Tiny (מהיר מאוד, פחות מדויק)" : "Tiny (Very Fast, Less Accurate)"}</option>
-                                          <option value="Xenova/whisper-base">{uiLang === 'he' ? "Base (איזון מעולה - מומלץ!)" : "Base (Great Balance - Recommended!)"}</option>
-                                          <option value="Xenova/whisper-small">{uiLang === 'he' ? "Small (מדויק יותר, דורש מחשב חזק)" : "Small (More Accurate, Requires Strong PC)"}</option>
+                                      <select disabled={status === 'processing'} value={modelSize} onChange={(e) => setModelSize(e.target.value)} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm disabled:opacity-50">
+                                          <option value="Xenova/whisper-tiny">{uiLang === 'he' ? "Tiny (מהיר מאוד)" : "Tiny (Very Fast)"}</option>
+                                          <option value="Xenova/whisper-base">{uiLang === 'he' ? "Base (מומלץ!)" : "Base (Recommended!)"}</option>
+                                          <option value="Xenova/whisper-small">{uiLang === 'he' ? "Small (למחשב חזק)" : "Small (Strong PC)"}</option>
                                       </select>
                                       <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
                                           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
@@ -1483,6 +1617,8 @@
               {showSettingsModal && (
                   <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-all duration-300 p-4">
                       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                          
+                          {/* System Settings Section */}
                           <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                               <Settings className="text-indigo-500" size={20} />
                               {t.settingsTitle}
@@ -1507,6 +1643,84 @@
                                       </button>
                                   </div>
                               </div>
+
+                              {/* CPU Power Settings */}
+                              <div>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">{t.cpuLabel}</label>
+                                  <div className="relative">
+                                      <select value={threads} onChange={(e) => setThreads(parseInt(e.target.value))} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm">
+                                          <option value="0">{t.cpuAuto}</option>
+                                          <option value="1">{t.cpu1}</option>
+                                          <option value="2">{t.cpu2}</option>
+                                          <option value="4">{t.cpu4}</option>
+                                          <option value="8">{t.cpu8}</option>
+                                      </select>
+                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
+                                          <Cpu size={18} />
+                                      </div>
+                                  </div>
+                              </div>
+                              
+                              {/* Parallel Chunks Slider */}
+                              <div>
+                                  <label className="flex justify-between items-center text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
+                                      <span>{t.chunks}</span>
+                                      <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-0.5 rounded font-mono">{numChunks}</span>
+                                  </label>
+                                  <input 
+                                      type="range" 
+                                      min="4" 
+                                      max="64" 
+                                      step="4"
+                                      value={numChunks}
+                                      onChange={(e) => setNumChunks(parseInt(e.target.value))}
+                                      className="w-full accent-indigo-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700"
+                                  />
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
+                                      {t.chunksDesc}
+                                  </p>
+                              </div>
+                          </div>
+
+                          {/* Subtitle Customization Section */}
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3 mt-8">
+                              <FileText className="text-indigo-500" size={20} />
+                              {t.subtitleSettingsTitle}
+                          </h3>
+
+                          <div className="space-y-6 mb-8">
+                              {/* Max Characters Slider */}
+                              <div>
+                                  <label className="flex justify-between items-center text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
+                                      <span>{t.maxCharsLabel}</span>
+                                      <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-0.5 rounded font-mono">
+                                          {maxCharsPerLine >= 100 ? t.unlimited : maxCharsPerLine}
+                                      </span>
+                                  </label>
+                                  <input 
+                                      type="range" 
+                                      min="20" 
+                                      max="100" 
+                                      step="2"
+                                      value={maxCharsPerLine}
+                                      onChange={(e) => setMaxCharsPerLine(parseInt(e.target.value))}
+                                      className="w-full accent-indigo-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700"
+                                  />
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
+                                      {t.maxCharsDesc}
+                                  </p>
+                              </div>
+
+                              {/* Remove Punctuation Toggle */}
+                              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                                  <input 
+                                      type="checkbox" 
+                                      checked={removePunctuation} 
+                                      onChange={(e) => setRemovePunctuation(e.target.checked)}
+                                      className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 bg-white dark:bg-slate-900"
+                                  />
+                                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{t.removePunctuationLabel}</span>
+                              </label>
 
                               {/* Export Format */}
                               <div>
@@ -1544,43 +1758,6 @@
                                       ))}
                                   </div>
                               </div>
-                              
-                              {/* CPU Power Settings */}
-                              <div>
-                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">{t.cpuLabel}</label>
-                                  <div className="relative">
-                                      <select value={threads} onChange={(e) => setThreads(parseInt(e.target.value))} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm">
-                                          <option value="0">{t.cpuAuto}</option>
-                                          <option value="1">{t.cpu1}</option>
-                                          <option value="2">{t.cpu2}</option>
-                                          <option value="4">{t.cpu4}</option>
-                                          <option value="8">{t.cpu8}</option>
-                                      </select>
-                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
-                                          <Cpu size={18} />
-                                      </div>
-                                  </div>
-                              </div>
-
-                              {/* Parallel Chunks Slider */}
-                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                                  <label className="flex justify-between items-center text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 mt-4">
-                                      <span>{t.chunks}</span>
-                                      <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-0.5 rounded font-mono">{numChunks}</span>
-                                  </label>
-                                  <input 
-                                      type="range" 
-                                      min="4" 
-                                      max="64" 
-                                      step="4"
-                                      value={numChunks}
-                                      onChange={(e) => setNumChunks(parseInt(e.target.value))}
-                                      className="w-full accent-indigo-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700"
-                                  />
-                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
-                                      {t.chunksDesc}
-                                  </p>
-                              </div>
                           </div>
                           
                           <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -1609,14 +1786,29 @@
                           
                           <div className="mb-6">
                               <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.apiKeyLabel}</label>
-                              <input 
-                                  type="password" 
-                                  value={tempApiKey}
-                                  onChange={(e) => setTempApiKey(e.target.value)}
-                                  placeholder={t.apiKeyPlaceholder}
-                                  className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 font-mono text-left dark:text-white"
-                                  dir="ltr"
-                              />
+                              <div className="relative">
+                                  <input 
+                                      type={isApiKeyVisible ? "text" : "password"} 
+                                      value={tempApiKey}
+                                      onChange={(e) => setTempApiKey(e.target.value)}
+                                      placeholder={t.apiKeyPlaceholder}
+                                      className={`w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 font-mono text-left dark:text-white transition-colors ${!isApiKeyValid ? 'border-amber-400 focus:ring-amber-500/50' : 'border-slate-300 dark:border-slate-700'}`}
+                                      dir="ltr"
+                                  />
+                                  <button
+                                      type="button"
+                                      onClick={() => setIsApiKeyVisible(!isApiKeyVisible)}
+                                      className="absolute inset-y-0 flex items-center justify-center w-12 text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+                                      style={{ right: uiLang === 'he' ? 'auto' : '0', left: uiLang === 'he' ? '0' : 'auto' }}
+                                  >
+                                      {isApiKeyVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                                  </button>
+                              </div>
+                              {!isApiKeyValid && (
+                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1 font-bold animate-fade-in">
+                                      <AlertTriangle size={12} /> {t.invalidKeyFormat}
+                                  </p>
+                              )}
                               <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                                   {t.noApiKey} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">{t.getApiKey}</a>.
                               </p>
@@ -1633,7 +1825,7 @@
                                       </button>
                                   )}
                                   <button 
-                                      onClick={() => { setShowApiKeyModal(false); setTempApiKey(''); setPendingAction(null); }}
+                                      onClick={() => { setShowApiKeyModal(false); setTempApiKey(''); setPendingAction(null); setIsApiKeyVisible(false); }}
                                       className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition-colors"
                                   >
                                       {t.cancel}
