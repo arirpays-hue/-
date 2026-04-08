@@ -247,51 +247,60 @@
 
                     const numChunks = self.customNumChunks || 16; 
                     const chunkSize = Math.ceil(contentLength / numChunks);
-                    const promises = [];
+                    const assembledChunks = [];
                     let fileLoaded = 0;
 
-                    for (let i = 0; i < numChunks; i++) {
-                        const start = i * chunkSize;
-                        const end = i === numChunks - 1 ? contentLength - 1 : (i + 1) * chunkSize - 1;
+                    // הגבלת עומס הרשת (Concurrency Limiter) - מונע קריסת דפדפנים אם המשתמש בחר המון פיצולים
+                    const maxConcurrency = 4;
+                    
+                    for (let i = 0; i < numChunks; i += maxConcurrency) {
+                        const batchPromises = [];
+                        for (let j = i; j < i + maxConcurrency && j < numChunks; j++) {
+                            const start = j * chunkSize;
+                            const end = j === numChunks - 1 ? contentLength - 1 : (j + 1) * chunkSize - 1;
 
-                        const chunkPromise = fetchWithRetry(url, {
-                            ...options,
-                            headers: {
-                                ...options.headers,
-                                'Range': 'bytes=' + start + '-' + end
-                            }
-                        }).then(async res => {
-                            if (!res || !res.body) throw new Error('No response body');
-                            const reader = res.body.getReader();
-                            const chunks = [];
-                            let chunkBytes = 0;
+                            const chunkPromise = fetchWithRetry(url, {
+                                ...options,
+                                headers: {
+                                    ...options.headers,
+                                    'Range': 'bytes=' + start + '-' + end
+                                }
+                            }).then(async res => {
+                                if (!res || !res.body) throw new Error('No response body');
+                                const reader = res.body.getReader();
+                                const chunks = [];
+                                let chunkBytes = 0;
 
-                            while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                chunks.push(value);
-                                chunkBytes += value.length;
-                                fileLoaded += value.length;
-                                
-                                self.postMessage({
-                                    type: 'progress',
-                                    step: currentLoadingStep,
-                                    data: { status: 'progress', file: url, loaded: fileLoaded, total: contentLength }
-                                });
-                            }
+                                while (true) {
+                                    const { done, value } = await reader.read();
+                                    if (done) break;
+                                    chunks.push(value);
+                                    chunkBytes += value.length;
+                                    fileLoaded += value.length;
+                                    
+                                    self.postMessage({
+                                        type: 'progress',
+                                        step: currentLoadingStep,
+                                        data: { status: 'progress', file: url, loaded: fileLoaded, total: contentLength }
+                                    });
+                                }
 
-                            const assembledChunk = new Uint8Array(chunkBytes);
-                            let offset = 0;
-                            for (const c of chunks) {
-                                assembledChunk.set(c, offset);
-                                offset += c.length;
-                            }
-                            return { index: i, buffer: assembledChunk };
-                        });
-                        promises.push(chunkPromise);
+                                const assembledChunk = new Uint8Array(chunkBytes);
+                                let offset = 0;
+                                for (const c of chunks) {
+                                    assembledChunk.set(c, offset);
+                                    offset += c.length;
+                                }
+                                return { index: j, buffer: assembledChunk };
+                            });
+                            batchPromises.push(chunkPromise);
+                        }
+                        
+                        // מחכים שקבוצת ההורדות תסיים לפני שמתחילים קבוצה חדשה למניעת עומס קריטי
+                        const batchResults = await Promise.all(batchPromises);
+                        assembledChunks.push(...batchResults);
                     }
 
-                    const assembledChunks = await Promise.all(promises);
                     assembledChunks.sort((a, b) => a.index - b.index);
 
                     const finalBuffer = new Uint8Array(contentLength);
@@ -917,16 +926,27 @@
                   alert(uiLang === 'he' ? 'אנא בחר קובץ קודם.' : 'Please select a file first.');
                   return;
               }
+              
+              if (file.size > 150 * 1024 * 1024) {
+                  if (!window.confirm(uiLang === 'he' ? 
+                    'הקובץ גדול (מעל 150MB). זיהוי שפה דורש פענוח חלקי שעלול לקחת זמן. להמשיך בכל זאת?' : 
+                    'File is large (>150MB). Language detection requires partial decoding which may take time. Proceed?')) {
+                      return;
+                  }
+              }
+              
               setIsDetectingLanguage(true);
               let audioCtx = null;
               try {
                   const arrayBuffer = await file.arrayBuffer();
                   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-                  const decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
+                  let decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
                   
                   // לוקחים רק את 30 השניות הראשונות לצורך זיהוי מהיר
                   const lengthToCopy = Math.min(decodedAudio.length, 16000 * 30);
                   const audioData = decodedAudio.getChannelData(0).slice(0, lengthToCopy);
+                  
+                  decodedAudio = null; // מניעת דליפות זיכרון
                   
                   if (audioCtx.state !== 'closed') await audioCtx.close();
                   audioCtx = null;
@@ -994,7 +1014,10 @@
               }
               
               arrayBuffer = null; // Garbage Collection מיידי
-              if (currentSession !== processingSessionRef.current) return;
+              if (currentSession !== processingSessionRef.current) {
+                  decodedAudio = null; // אבטחת זיכרון נוספת במקרה של ביטול
+                  return;
+              }
               
               let audioData = decodedAudio.getChannelData(0);
               
