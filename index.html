@@ -96,7 +96,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useRef, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity, LogOut, Users, Mail, Copy, Check, AlignLeft, CheckSquare, List, Key, Settings, Moon, Sun, Globe, Wand2, Type, FileJson, Eye, EyeOff } from 'lucide-react';
+        import { HardDrive, FileVideo, FileAudio, Download, CheckCircle, AlertCircle, Loader2, Cpu, Lock, Trash2, Bookmark, AlertTriangle, Zap, Sparkles, Settings2, FileText, Activity, LogOut, Users, Mail, Copy, Check, AlignLeft, CheckSquare, List, Key, Settings, Moon, Sun, Globe, Wand2, Type, FileJson, Eye, EyeOff, XCircle } from 'lucide-react';
 
         import { initializeApp } from 'firebase/app';
         import { getAuth, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
@@ -439,8 +439,9 @@
           const [tempApiKey, setTempApiKey] = useState('');
           const [pendingAction, setPendingAction] = useState(null);
           
-          // API Key Validation State
+          // API Key Validation & UI State
           const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
+          const [isEditingApiKey, setIsEditingApiKey] = useState(false);
           const isApiKeyValid = tempApiKey.trim() === '' || tempApiKey.trim().startsWith('AIza');
           
           // Theme & Additional Settings States
@@ -647,8 +648,11 @@
               });
               if (totalSize > 0) {
                   const overallProgress = (totalLoaded / totalSize) * 100;
-                  setProgress(baseProgress + Math.round(overallProgress * weight));
-                  setStatusText(`מוריד/קורא מודל ${modelName}... ${Math.round(overallProgress)}% (מואץ)`);
+                  // הגנה מפני NaN Progress במקרה שהשרת לא מחזיר Content-Length
+                  if (!isNaN(overallProgress)) {
+                      setProgress(baseProgress + Math.round(overallProgress * weight));
+                      setStatusText(`מוריד/קורא מודל ${modelName}... ${Math.round(overallProgress)}% (מואץ)`);
+                  }
               }
           };
 
@@ -665,7 +669,7 @@
           };
 
           const clearStorage = async () => {
-            if (window.confirm("האם אתה בטוח שברצונך למחוק את כל קובצי הבינה המלאכותית מהמחשב?")) {
+            if (window.confirm(uiLang === 'he' ? "האם אתה בטוח שברצונך למחוק את כל קובצי הבינה המלאכותית מהמחשב?" : "Are you sure you want to delete all AI models from your computer?")) {
               try {
                 if ('caches' in window) {
                   const cacheNames = await caches.keys();
@@ -679,8 +683,8 @@
                 processingSessionRef.current += 1;
                 setWorkerSession(prev => prev + 1);
                 
-                alert('כל קובצי המודלים נמחקו בהצלחה מהכספת והזיכרון פונה!');
-              } catch (err) { alert('אירעה שגיאה בעת ניקוי האחסון.'); }
+                alert(uiLang === 'he' ? 'כל קובצי המודלים נמחקו בהצלחה מהכספת והזיכרון פונה!' : 'All models deleted successfully and memory freed!');
+              } catch (err) { alert(uiLang === 'he' ? 'אירעה שגיאה בעת ניקוי האחסון.' : 'Error clearing storage.'); }
             }
           };
 
@@ -724,7 +728,7 @@
               whisperDownloadsRef.current = {}; nllbDownloadsRef.current = {}; 
             } else {
               setStatus('error');
-              setErrorMessage('סוג הקובץ אינו נתמך. אנא העלה וידאו או שמע.');
+              setErrorMessage(uiLang === 'he' ? 'סוג הקובץ אינו נתמך. אנא העלה וידאו או שמע.' : 'File type not supported. Please upload video or audio.');
             }
           };
 
@@ -869,10 +873,11 @@
           };
 
           const stripSrt = (srt) => {
-              // תיקון יציבות: התמודדות טובה יותר עם סוגי שבירות שורה שונים (CRLF לעומת LF)
+              // ניקוי יציב ועמוק של טקסט ל-AI (כולל הסרת HTML ורעשי שבירות שורה)
               return srt.replace(/\r\n/g, '\n')
                         .replace(/^\d+$/gm, '')
                         .replace(/^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}$/gm, '')
+                        .replace(/<[^>]*>/g, '') // הסרת תגיות HTML שזיהוי הקול עלול לפלוט
                         .replace(/^\s*[\r\n]/gm, '') // הסרת שורות ריקות לגמרי
                         .trim();
           };
@@ -925,12 +930,25 @@
               }
           };
 
+          const openApiKeyModal = () => {
+              setIsEditingApiKey(!geminiApiKey);
+              setTempApiKey(geminiApiKey || '');
+              setIsApiKeyVisible(false);
+              setShowApiKeyModal(true);
+          };
+
+          const closeApiKeyModal = () => {
+              setShowApiKeyModal(false);
+              setTempApiKey('');
+              setPendingAction(null);
+              setIsApiKeyVisible(false);
+          };
+
           const handleSaveApiKey = () => {
               if (tempApiKey.trim()) {
                   localStorage.setItem('gemini_api_key', tempApiKey.trim());
                   setGeminiApiKey(tempApiKey.trim());
-                  setShowApiKeyModal(false);
-                  setIsApiKeyVisible(false);
+                  closeApiKeyModal();
                   
                   if (pendingAction) {
                       handleLlmAction(pendingAction, tempApiKey.trim());
@@ -944,12 +962,13 @@
               setGeminiApiKey('');
               setTempApiKey('');
               setIsApiKeyVisible(false);
+              setIsEditingApiKey(true);
           };
 
           const triggerLlmAction = (actionType) => {
               if (!geminiApiKey) {
                   setPendingAction(actionType);
-                  setShowApiKeyModal(true);
+                  openApiKeyModal();
               } else {
                   handleLlmAction(actionType, geminiApiKey);
               }
@@ -1065,7 +1084,7 @@
             setFile(null); setStatus('idle'); setSrtResult(''); setErrorMessage(''); setProgress(0); setCopied(false);
             setLlmResult(''); setLlmError(''); setActiveLlmAction(null);
             
-            // בטל פעולות קודמות ואפס זיכרון
+            // בטל פעולות קודמות ואפס זיכרון בצורה מאובטחת
             processingSessionRef.current += 1;
             setWorkerSession(prev => prev + 1);
             
@@ -1093,6 +1112,7 @@
                   modelSize: "גודל ואיכות המודל:",
                   startProcessing: "התחל עיבוד ולמידת מכונה",
                   processingWarn: "הפעולה מתבצעת באופן מקומי לחלוטין על גבי מעבד המחשב שלך. אנא אל תסגור דף זה.",
+                  cancelProcess: "בטל פעולה",
                   progress: "התקדמות",
                   readyTitle: "הכיתוביות מוכנות!",
                   readyDesc: "העיבוד המקומי הסתיים בהצלחה. ניתן לערוך את הטקסט למטה לפני ההורדה.",
@@ -1142,7 +1162,10 @@
                   noApiKey: "אין לך מפתח?",
                   getApiKey: "לחץ כאן כדי לייצר מפתח חינמי ב-Google AI Studio",
                   deleteKey: "מחק מפתח",
-                  cancel: "ביטול"
+                  cancel: "ביטול",
+                  keyActiveTitle: "המפתח מוגדר ופעיל",
+                  editKey: "ערוך מפתח",
+                  close: "סגור"
               },
               en: {
                   loading: "Loading data...",
@@ -1164,6 +1187,7 @@
                   modelSize: "Model Size & Quality:",
                   startProcessing: "Start AI Processing",
                   processingWarn: "Processing locally on your computer's CPU. Please do not close this page.",
+                  cancelProcess: "Cancel Process",
                   progress: "Progress",
                   readyTitle: "Subtitles are ready!",
                   readyDesc: "Local processing completed successfully. You can edit the text below before downloading.",
@@ -1213,7 +1237,10 @@
                   noApiKey: "Don't have a key?",
                   getApiKey: "Click here to generate a free key in Google AI Studio",
                   deleteKey: "Delete Key",
-                  cancel: "Cancel"
+                  cancel: "Cancel",
+                  keyActiveTitle: "API Key is configured and active",
+                  editKey: "Edit Key",
+                  close: "Close"
               }
           };
           const t = i18n[uiLang];
@@ -1272,7 +1299,7 @@
                       </button>
 
                       <button 
-                          onClick={() => setShowApiKeyModal(true)} 
+                          onClick={openApiKeyModal} 
                           className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold transition-colors border ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
                           title={t.apiConnected}
                       >
@@ -1435,6 +1462,10 @@
                                     </div>
                                   </div>
                               </div>
+                              
+                              <button onClick={resetApp} className="mt-8 flex items-center justify-center gap-2 px-6 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm">
+                                  <XCircle size={18} /> {t.cancelProcess}
+                              </button>
                             </div>
                           )}
 
@@ -1501,10 +1532,10 @@
                                             <div className="flex items-center gap-2 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800">
                                                 <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                                                 {t.apiConnected}
-                                                <button onClick={() => setShowApiKeyModal(true)} className="ml-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">{uiLang === 'he' ? 'שנה מפתח' : 'Change Key'}</button>
+                                                <button onClick={openApiKeyModal} className="ml-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">{uiLang === 'he' ? 'שנה מפתח' : 'Change Key'}</button>
                                             </div>
                                         ) : (
-                                            <button onClick={() => setShowApiKeyModal(true)} className="text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-600 transition-colors">
+                                            <button onClick={openApiKeyModal} className="text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-600 transition-colors">
                                                 {t.setApi}
                                             </button>
                                         )}
@@ -1579,7 +1610,7 @@
                                     <h4 className="font-bold text-red-800 dark:text-red-300 text-lg mb-1">{t.errorTitle}</h4>
                                     <p className="font-medium text-red-600 dark:text-red-400">{errorMessage}</p>
                                 </div>
-                                <button onClick={() => setStatus('idle')} className="mt-4 px-8 py-2.5 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 text-sm font-bold text-red-700 dark:text-red-400 rounded-xl shadow-sm hover:bg-red-50 dark:hover:bg-slate-700 transition-all">{t.tryAgain}</button>
+                                <button onClick={resetApp} className="mt-4 px-8 py-2.5 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 text-sm font-bold text-red-700 dark:text-red-400 rounded-xl shadow-sm hover:bg-red-50 dark:hover:bg-slate-700 transition-all">{t.tryAgain}</button>
                             </div>
                           )}
                         </div>
@@ -1604,7 +1635,7 @@
                         <Settings size={14} /> {t.settings}
                     </button>
                     <button 
-                        onClick={() => setShowApiKeyModal(true)} 
+                        onClick={openApiKeyModal} 
                         className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}
                     >
                         <Key size={14} />
@@ -1784,60 +1815,86 @@
                               {t.apiDesc}
                           </p>
                           
-                          <div className="mb-6">
-                              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.apiKeyLabel}</label>
-                              <div className="relative">
-                                  <input 
-                                      type={isApiKeyVisible ? "text" : "password"} 
-                                      value={tempApiKey}
-                                      onChange={(e) => setTempApiKey(e.target.value)}
-                                      placeholder={t.apiKeyPlaceholder}
-                                      className={`w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 font-mono text-left dark:text-white transition-colors ${!isApiKeyValid ? 'border-amber-400 focus:ring-amber-500/50' : 'border-slate-300 dark:border-slate-700'}`}
-                                      dir="ltr"
-                                  />
-                                  <button
-                                      type="button"
-                                      onClick={() => setIsApiKeyVisible(!isApiKeyVisible)}
-                                      className="absolute inset-y-0 flex items-center justify-center w-12 text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
-                                      style={{ right: uiLang === 'he' ? 'auto' : '0', left: uiLang === 'he' ? '0' : 'auto' }}
-                                  >
-                                      {isApiKeyVisible ? <EyeOff size={18} /> : <Eye size={18} />}
-                                  </button>
+                          {geminiApiKey && !isEditingApiKey ? (
+                              <div className="mb-6 space-y-4">
+                                  <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-3">
+                                      <div className="bg-emerald-100 dark:bg-emerald-800 p-2 rounded-full text-emerald-600 dark:text-emerald-400">
+                                          <CheckCircle size={20} />
+                                      </div>
+                                      <div className="flex-1">
+                                          <p className="font-bold text-emerald-800 dark:text-emerald-300">{t.keyActiveTitle}</p>
+                                          <p className="text-sm font-mono text-emerald-600 dark:text-emerald-400 mt-1" dir="ltr">
+                                              {geminiApiKey.substring(0, 4)}••••••••••••••••••••••••••••{geminiApiKey.substring(geminiApiKey.length - 4)}
+                                          </p>
+                                      </div>
+                                  </div>
                               </div>
-                              {!isApiKeyValid && (
-                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1 font-bold animate-fade-in">
-                                      <AlertTriangle size={12} /> {t.invalidKeyFormat}
+                          ) : (
+                              <div className="mb-6">
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.apiKeyLabel}</label>
+                                  <div className="relative">
+                                      <input 
+                                          type={isApiKeyVisible ? "text" : "password"} 
+                                          value={tempApiKey}
+                                          onChange={(e) => setTempApiKey(e.target.value)}
+                                          placeholder={t.apiKeyPlaceholder}
+                                          className={`w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 font-mono text-left dark:text-white transition-colors ${!isApiKeyValid ? 'border-amber-400 focus:ring-amber-500/50' : 'border-slate-300 dark:border-slate-700'}`}
+                                          dir="ltr"
+                                      />
+                                      <button
+                                          type="button"
+                                          onClick={() => setIsApiKeyVisible(!isApiKeyVisible)}
+                                          className="absolute inset-y-0 flex items-center justify-center w-12 text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+                                          style={{ right: uiLang === 'he' ? 'auto' : '0', left: uiLang === 'he' ? '0' : 'auto' }}
+                                      >
+                                          {isApiKeyVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                                      </button>
+                                  </div>
+                                  {!isApiKeyValid && (
+                                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1 font-bold animate-fade-in">
+                                          <AlertTriangle size={12} /> {t.invalidKeyFormat}
+                                      </p>
+                                  )}
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                                      {t.noApiKey} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">{t.getApiKey}</a>.
                                   </p>
-                              )}
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                                  {t.noApiKey} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">{t.getApiKey}</a>.
-                              </p>
-                          </div>
+                              </div>
+                          )}
                           
-                          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
+                          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 border-t border-slate-100 dark:border-slate-800 pt-4 mt-4">
                               <div className="flex gap-3 mt-4 sm:mt-0">
-                                  {geminiApiKey && (
+                                  {geminiApiKey && !isEditingApiKey && (
                                       <button 
-                                          onClick={() => { handleRemoveApiKey(); setShowApiKeyModal(false); }}
-                                          className="px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                                          onClick={handleRemoveApiKey}
+                                          className="px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 rounded-xl transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800"
                                       >
                                           {t.deleteKey}
                                       </button>
                                   )}
+                                  {geminiApiKey && !isEditingApiKey && (
+                                      <button 
+                                          onClick={() => { setIsEditingApiKey(true); setTempApiKey(geminiApiKey); }}
+                                          className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition-colors border border-slate-200 dark:border-slate-700"
+                                      >
+                                          {t.editKey}
+                                      </button>
+                                  )}
                                   <button 
-                                      onClick={() => { setShowApiKeyModal(false); setTempApiKey(''); setPendingAction(null); setIsApiKeyVisible(false); }}
+                                      onClick={closeApiKeyModal}
                                       className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition-colors"
                                   >
-                                      {t.cancel}
+                                      {geminiApiKey && !isEditingApiKey ? t.close : t.cancel}
                                   </button>
                               </div>
-                              <button 
-                                  onClick={handleSaveApiKey}
-                                  disabled={!tempApiKey.trim()}
-                                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-800/50 text-white font-bold py-2 px-6 rounded-xl transition-colors"
-                              >
-                                  {t.closeSave}
-                              </button>
+                              {(!geminiApiKey || isEditingApiKey) && (
+                                  <button 
+                                      onClick={handleSaveApiKey}
+                                      disabled={!tempApiKey.trim()}
+                                      className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-800/50 text-white font-bold py-2 px-6 rounded-xl transition-colors"
+                                  >
+                                      {t.closeSave}
+                                  </button>
+                              )}
                           </div>
                       </div>
                   </div>
