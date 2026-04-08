@@ -133,7 +133,37 @@
             { code: 'fi', nllb: 'fin_Latn', name: { he: 'פינית', en: 'Finnish' } },
             { code: 'no', nllb: 'nob_Latn', name: { he: 'נורווגית', en: 'Norwegian' } },
             { code: 'bn', nllb: 'ben_Beng', name: { he: 'בנגלית', en: 'Bengali' } },
-            { code: 'ur', nllb: 'urd_Arab', name: { he: 'אורדו', en: 'Urdu' } }
+            { code: 'ur', nllb: 'urd_Arab', name: { he: 'אורדו', en: 'Urdu' } },
+            { code: 'fa', nllb: 'pes_Arab', name: { he: 'פרסית', en: 'Persian' } },
+            { code: 'bg', nllb: 'bul_Cyrl', name: { he: 'בולגרית', en: 'Bulgarian' } },
+            { code: 'ca', nllb: 'cat_Latn', name: { he: 'קטלאנית', en: 'Catalan' } },
+            { code: 'hr', nllb: 'hrv_Latn', name: { he: 'קרואטית', en: 'Croatian' } },
+            { code: 'sr', nllb: 'srp_Cyrl', name: { he: 'סרבית', en: 'Serbian' } },
+            { code: 'sk', nllb: 'slk_Latn', name: { he: 'סלובקית', en: 'Slovak' } },
+            { code: 'sl', nllb: 'slv_Latn', name: { he: 'סלובנית', en: 'Slovenian' } },
+            { code: 'lt', nllb: 'lit_Latn', name: { he: 'ליטאית', en: 'Lithuanian' } },
+            { code: 'lv', nllb: 'lvs_Latn', name: { he: 'לטבית', en: 'Latvian' } },
+            { code: 'et', nllb: 'est_Latn', name: { he: 'אסטונית', en: 'Estonian' } },
+            { code: 'ta', nllb: 'tam_Taml', name: { he: 'טמילית', en: 'Tamil' } },
+            { code: 'te', nllb: 'tel_Telu', name: { he: 'טלוגו', en: 'Telugu' } },
+            { code: 'ml', nllb: 'mal_Mlym', name: { he: 'מלאיאלאם', en: 'Malayalam' } },
+            { code: 'mr', nllb: 'mar_Deva', name: { he: 'מראטהי', en: 'Marathi' } },
+            { code: 'gu', nllb: 'guj_Gujr', name: { he: 'גוג\'ראטית', en: 'Gujarati' } },
+            { code: 'tl', nllb: 'tgl_Latn', name: { he: 'טגאלוג (פיליפינית)', en: 'Tagalog (Filipino)' } },
+            { code: 'sw', nllb: 'swh_Latn', name: { he: 'סוואהילי', en: 'Swahili' } },
+            { code: 'af', nllb: 'afr_Latn', name: { he: 'אפריקאנס', en: 'Afrikaans' } },
+            { code: 'is', nllb: 'isl_Latn', name: { he: 'איסלנדית', en: 'Icelandic' } },
+            { code: 'ms', nllb: 'zsm_Latn', name: { he: 'מלאית', en: 'Malay' } },
+            { code: 'ne', nllb: 'npi_Deva', name: { he: 'נפאלית', en: 'Nepali' } },
+            { code: 'kk', nllb: 'kaz_Cyrl', name: { he: 'קזחית', en: 'Kazakh' } },
+            { code: 'uz', nllb: 'uzn_Latn', name: { he: 'אוזבקית', en: 'Uzbek' } },
+            { code: 'mk', nllb: 'mkd_Cyrl', name: { he: 'מקדונית', en: 'Macedonian' } },
+            { code: 'az', nllb: 'azj_Latn', name: { he: 'אזרית', en: 'Azerbaijani' } },
+            { code: 'ka', nllb: 'kat_Geor', name: { he: 'גאורגית', en: 'Georgian' } },
+            { code: 'sq', nllb: 'als_Latn', name: { he: 'אלבנית', en: 'Albanian' } },
+            { code: 'hy', nllb: 'hye_Armn', name: { he: 'ארמנית', en: 'Armenian' } },
+            { code: 'mn', nllb: 'khk_Cyrl', name: { he: 'מונגולית', en: 'Mongolian' } },
+            { code: 'bs', nllb: 'bos_Latn', name: { he: 'בוסנית', en: 'Bosnian' } }
         ];
 
         // Initialize Firebase
@@ -288,6 +318,46 @@
             self.onmessage = async (e) => {
                 const { type, data } = e.data;
 
+                // --- Task: Fast Language Detection ---
+                if (type === 'detect_language') {
+                    self.customNumChunks = 16;
+                    try {
+                        if (!pipeline) {
+                            let transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/transformers.min.js');
+                            pipeline = transformers.pipeline;
+                            env = transformers.env;
+                            env.allowLocalModels = false; env.allowRemoteModels = true; env.useBrowserCache = true;
+                            env.backends.onnx.wasm.numThreads = Math.min(self.navigator.hardwareConcurrency || 4, 8);
+                            env.backends.onnx.wasm.simd = true;
+                            env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/';
+                            env.customFetch = chunkedFetch;
+                        }
+                        
+                        currentLoadingStep = 'transcribe_load';
+                        
+                        if (!transcriber || currentModelSize !== data.modelSize) {
+                            if (transcriber && typeof transcriber.dispose === 'function') await transcriber.dispose();
+                            currentModelSize = data.modelSize;
+                            transcriber = await pipeline('automatic-speech-recognition', data.modelSize, {
+                                quantized: true,
+                                progress_callback: (prog) => self.postMessage({ type: 'progress', step: 'transcribe_load', data: prog })
+                            });
+                        }
+                        
+                        const output = await transcriber(data.audioChunk, {
+                            task: 'transcribe',
+                            chunk_length_s: 30,
+                            return_timestamps: false
+                        });
+                        
+                        self.postMessage({ type: 'detect_complete', text: output.text });
+                    } catch(err) {
+                        self.postMessage({ type: 'detect_error', error: err.message });
+                    }
+                    return;
+                }
+
+                // --- Task: Full Transcription & Translation ---
                 if (type === 'process') {
                     self.customNumChunks = data.numChunks || 16;
                     try {
@@ -423,6 +493,7 @@
           // Language Settings
           const [sourceLang, setSourceLang] = useState(() => localStorage.getItem('sourceLang') || 'auto');
           const [targetLang, setTargetLang] = useState(() => localStorage.getItem('targetLang') || 'original');
+          const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
           
           const [isPersistent, setIsPersistent] = useState(false);
           const [storageUsedMB, setStorageUsedMB] = useState('0.00');
@@ -581,6 +652,45 @@
               window.location.href = `mailto:hyywry013@gmail.com?subject=${subject}&body=${body}`;
           };
 
+          // --- זיהוי שפה היוריסטי (Heuristic Language Detection) ---
+          const detectLanguageFromText = (text) => {
+              if (!text) return null;
+              const lowerText = text.toLowerCase();
+              
+              if (/[\u0590-\u05FF]/.test(text)) return 'he'; // Hebrew
+              if (/[\u0400-\u04FF]/.test(text)) return 'ru'; // Cyrillic (assumed Russian)
+              if (/[\u0600-\u06FF]/.test(text)) return 'ar'; // Arabic
+              if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(text)) return 'ja'; // Japanese
+              if (/[\uac00-\ud7a3]/.test(text)) return 'ko'; // Korean
+              if (/[\u0900-\u097F]/.test(text)) return 'hi'; // Hindi
+              if (/[\u0E00-\u0E7F]/.test(text)) return 'th'; // Thai
+              
+              const words = lowerText.split(/\W+/);
+              const countWords = (stopWords) => stopWords.reduce((acc, word) => acc + (words.includes(word) ? 1 : 0), 0);
+
+              const scores = {
+                  en: countWords(['the', 'and', 'to', 'of', 'a', 'in', 'is', 'that', 'it', 'you']),
+                  es: countWords(['el', 'la', 'de', 'que', 'y', 'en', 'un', 'una', 'por', 'los']),
+                  fr: countWords(['le', 'la', 'de', 'et', 'est', 'je', 'un', 'une', 'dans', 'pour']),
+                  de: countWords(['der', 'die', 'das', 'und', 'in', 'den', 'von', 'zu', 'ist']),
+                  it: countWords(['il', 'la', 'di', 'e', 'che', 'un', 'una', 'in', 'per']),
+                  pt: countWords(['o', 'a', 'de', 'e', 'que', 'do', 'da', 'um', 'uma', 'para']),
+                  nl: countWords(['de', 'het', 'en', 'van', 'een', 'in', 'dat', 'op', 'te']),
+                  pl: countWords(['w', 'i', 'z', 'na', 'do', 'nie', 'ale', 'to', 'jak']),
+                  tr: countWords(['ve', 'bir', 'bu', 'da', 'de', 'için', 'ile', 'o', 'çok'])
+              };
+
+              let maxScore = 0;
+              let detectedLang = null;
+              for (const [lang, score] of Object.entries(scores)) {
+                  if (score > maxScore && score >= 1) {
+                      maxScore = score;
+                      detectedLang = lang;
+                  }
+              }
+              return detectedLang;
+          };
+
           // --- ניהול מחזור החיים של ה-Worker למניעת דליפות זיכרון ---
           useEffect(() => {
             const blob = new Blob([workerCode], { type: 'application/javascript' });
@@ -589,6 +699,8 @@
 
             workerRef.current.onmessage = (e) => {
                 const { type, text, percent, step, data, chunks, error } = e.data;
+                
+                // תפיסת הודעות תהליך מרכזי
                 if (type === 'status') setStatusText(text);
                 else if (type === 'progress_percent') setProgress(percent);
                 else if (type === 'progress') handleWorkerProgress(step, data);
@@ -598,10 +710,28 @@
                     setProgress(100);
                     setStatus('complete');
                     calculateStorageUsed(); 
-                } else if (type === 'error') {
+                } 
+                // תפיסת הודעות מזיהוי שפה מהיר
+                else if (type === 'detect_complete') {
+                    const detectedCode = detectLanguageFromText(text);
+                    if (detectedCode) {
+                        setSourceLang(detectedCode);
+                        if (detectedCode !== 'auto') setTargetLang('original');
+                        alert(uiLang === 'he' ? `זוהתה שפה: ${SUPPORTED_LANGUAGES.find(l=>l.code===detectedCode)?.name.he}` : `Detected language: ${SUPPORTED_LANGUAGES.find(l=>l.code===detectedCode)?.name.en}`);
+                    } else {
+                        alert(uiLang === 'he' ? 'לא הצלחנו לזהות בוודאות. ייתכן שיש מעט מדי דיבור בהתחלה או שפה לא נתמכת.' : 'Could not detect language with certainty. Try manual selection.');
+                    }
+                    setIsDetectingLanguage(false);
+                }
+                else if (type === 'detect_error') {
+                    alert((uiLang === 'he' ? "שגיאה בזיהוי השפה: " : "Language detection error: ") + error);
+                    setIsDetectingLanguage(false);
+                }
+                else if (type === 'error') {
                     console.error("Worker Error:", error);
                     setStatus('error');
                     setErrorMessage(error || 'אירעה שגיאה בעיבוד נתונים ברקע.');
+                    setIsDetectingLanguage(false);
                 }
             };
 
@@ -779,6 +909,40 @@
               setSourceLang(val);
               if (val === 'auto') {
                   setTargetLang('original');
+              }
+          };
+
+          const handleDetectLanguage = async () => {
+              if (!file) {
+                  alert(uiLang === 'he' ? 'אנא בחר קובץ קודם.' : 'Please select a file first.');
+                  return;
+              }
+              setIsDetectingLanguage(true);
+              let audioCtx = null;
+              try {
+                  const arrayBuffer = await file.arrayBuffer();
+                  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                  const decodedAudio = await audioCtx.decodeAudioData(arrayBuffer);
+                  
+                  // לוקחים רק את 30 השניות הראשונות לצורך זיהוי מהיר
+                  const lengthToCopy = Math.min(decodedAudio.length, 16000 * 30);
+                  const audioData = decodedAudio.getChannelData(0).slice(0, lengthToCopy);
+                  
+                  if (audioCtx.state !== 'closed') await audioCtx.close();
+                  audioCtx = null;
+                  
+                  workerRef.current.postMessage({
+                      type: 'detect_language',
+                      data: { audioChunk: audioData, modelSize }
+                  }, [audioData.buffer]);
+                  
+              } catch(err) {
+                  console.error(err);
+                  alert(uiLang === 'he' ? 'שגיאה בקריאת הקובץ לזיהוי שפה. נסה לבחור שפה ידנית.' : 'Error reading file for language detection.');
+                  setIsDetectingLanguage(false);
+                  if (audioCtx && audioCtx.state !== 'closed') {
+                      try { await audioCtx.close(); } catch(e){}
+                  }
               }
           };
 
@@ -1109,6 +1273,8 @@
                   sourceLangLabel: "שפת הדיבור בסרטון:",
                   targetLangLabel: "שפת הכתוביות (תרגום):",
                   autoDetect: "זיהוי אוטומטי (Auto)",
+                  detectLanguageBtn: "זיהוי שפה (AI)",
+                  detecting: "מזהה...",
                   originalLang: "שפת המקור (ללא תרגום)",
                   modelSize: "גודל ואיכות המודל:",
                   startProcessing: "התחל עיבוד ולמידת מכונה",
@@ -1184,6 +1350,8 @@
                   sourceLangLabel: "Spoken Language:",
                   targetLangLabel: "Subtitle Language (Translation):",
                   autoDetect: "Auto Detect",
+                  detectLanguageBtn: "Detect Lang (AI)",
+                  detecting: "Detecting...",
                   originalLang: "Original Language (No Translation)",
                   modelSize: "Model Size & Quality:",
                   startProcessing: "Start AI Processing",
@@ -1394,7 +1562,17 @@
                               </h4>
                               <div className="grid md:grid-cols-3 gap-4 pt-2">
                                 <div className="space-y-2">
-                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.sourceLangLabel}</label>
+                                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center w-full mb-2">
+                                      <span>{t.sourceLangLabel}</span>
+                                      <button 
+                                         onClick={handleDetectLanguage} 
+                                         disabled={isDetectingLanguage || !file || status === 'processing'}
+                                         className="text-indigo-600 dark:text-indigo-400 text-xs flex items-center gap-1 hover:underline disabled:opacity-50 disabled:no-underline"
+                                      >
+                                         {isDetectingLanguage ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                         {isDetectingLanguage ? t.detecting : t.detectLanguageBtn}
+                                      </button>
+                                  </label>
                                   <div className="relative">
                                       <select disabled={status === 'processing'} value={sourceLang} onChange={handleSourceLangChange} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm disabled:opacity-50">
                                           <option value="auto" className="font-bold text-indigo-600 dark:text-indigo-400">{t.autoDetect}</option>
@@ -1408,7 +1586,7 @@
                                   </div>
                                 </div>
                                 <div className="space-y-2">
-                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.targetLangLabel}</label>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.targetLangLabel}</label>
                                   <div className="relative">
                                       <select 
                                           value={targetLang} 
@@ -1427,7 +1605,7 @@
                                   </div>
                                 </div>
                                 <div className="space-y-2">
-                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">{t.modelSize}</label>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.modelSize}</label>
                                   <div className="relative">
                                       <select disabled={status === 'processing'} value={modelSize} onChange={(e) => setModelSize(e.target.value)} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm disabled:opacity-50">
                                           <option value="Xenova/whisper-tiny">{uiLang === 'he' ? "Tiny (מהיר מאוד)" : "Tiny (Very Fast)"}</option>
