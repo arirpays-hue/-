@@ -31,7 +31,11 @@
                         'sound-wave': 'sound-wave 1.2s ease-in-out infinite',
                         'blob': 'blob 10s infinite',
                         'pulse-glow': 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'scan': 'scan 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                        'scan': 'scan 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'shimmer': 'shimmer 2.5s infinite linear',
+                        'modal-pop': 'modal-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'check-pop': 'check-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        'indeterminate': 'indeterminate 1.5s infinite linear'
                     },
                     keyframes: {
                         'gradient-x': {
@@ -61,6 +65,23 @@
                             '15%': { opacity: '1', boxShadow: '0 0 20px 2px rgba(99,102,241,0.6)' },
                             '85%': { opacity: '1', boxShadow: '0 0 20px 2px rgba(99,102,241,0.6)' },
                             '100%': { top: '105%', opacity: '0' }
+                        },
+                        'shimmer': {
+                            '0%': { backgroundPosition: '200% 0' },
+                            '100%': { backgroundPosition: '-200% 0' }
+                        },
+                        'modal-pop': {
+                            '0%': { opacity: '0', transform: 'scale(0.95) translateY(15px)' },
+                            '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
+                        },
+                        'check-pop': {
+                            '0%': { opacity: '0', transform: 'scale(0.5) rotate(-15deg)' },
+                            '50%': { transform: 'scale(1.2) rotate(5deg)' },
+                            '100%': { opacity: '1', transform: 'scale(1) rotate(0)' }
+                        },
+                        'indeterminate': {
+                            '0%': { transform: 'translateX(-100%)' },
+                            '100%': { transform: 'translateX(200%)' }
                         }
                     }
                 }
@@ -289,36 +310,36 @@
                             }).then(async res => {
                                 if (!res || !res.body) throw new Error('No response body');
                                 const reader = res.body.getReader();
-                            const chunks = [];
-                            let chunkBytes = 0;
+                                const chunks = [];
+                                let chunkBytes = 0;
 
-                            while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                chunks.push(value);
-                                chunkBytes += value.length;
-                                fileLoaded += value.length;
-                                
-                                // אופטימיזציית UI: הגבלת קצב עדכוני המסך ל-10 בשנייה כדי למנוע קריסת React
-                                const now = Date.now();
-                                if (now - (self.lastProgressTime || 0) > 100) {
-                                    self.postMessage({
-                                        type: 'progress',
-                                        step: currentLoadingStep,
-                                        data: { status: 'progress', file: url, loaded: fileLoaded, total: contentLength }
-                                    });
-                                    self.lastProgressTime = now;
+                                while (true) {
+                                    const { done, value } = await reader.read();
+                                    if (done) break;
+                                    chunks.push(value);
+                                    chunkBytes += value.length;
+                                    fileLoaded += value.length;
+                                    
+                                    // אופטימיזציית UI: הגבלת קצב עדכוני המסך ל-10 בשנייה כדי למנוע קריסת React
+                                    const now = Date.now();
+                                    if (now - (self.lastProgressTime || 0) > 100) {
+                                        self.postMessage({
+                                            type: 'progress',
+                                            step: currentLoadingStep,
+                                            data: { status: 'progress', file: url, loaded: fileLoaded, total: contentLength }
+                                        });
+                                        self.lastProgressTime = now;
+                                    }
                                 }
-                            }
-                            
-                            // שליחת וידוא סיום ההורדה
-                            self.postMessage({
-                                type: 'progress',
-                                step: currentLoadingStep,
-                                data: { status: 'done', file: url, loaded: fileLoaded, total: contentLength }
-                            });
+                                
+                                // שליחת וידוא סיום ההורדה
+                                self.postMessage({
+                                    type: 'progress',
+                                    step: currentLoadingStep,
+                                    data: { status: 'done', file: url, loaded: fileLoaded, total: contentLength }
+                                });
 
-                            const assembledChunk = new Uint8Array(chunkBytes);
+                                const assembledChunk = new Uint8Array(chunkBytes);
                                 let offset = 0;
                                 for (const c of chunks) {
                                     assembledChunk.set(c, offset);
@@ -426,6 +447,7 @@
                 if (type === 'process') {
                     self.customNumChunks = data.numChunks || 16;
                     try {
+                        self.postMessage({ type: 'phase', phase: 'loading_asr' });
                         if (!pipeline) {
                             self.postMessage({ type: 'status', text: 'מאתחל מנוע בינה מלאכותית ברקע...' });
                             
@@ -499,7 +521,7 @@
                         }
 
                         self.postMessage({ type: 'status', text: 'המודל מוכן! מבצע פענוח קולי ברקע (המסך נשאר פעיל)...' });
-                        self.postMessage({ type: 'progress_percent', percent: 40 });
+                        self.postMessage({ type: 'phase', phase: 'transcribing' });
 
                         let transcriberConfig = {
                             task: 'transcribe',
@@ -520,7 +542,7 @@
 
                         if (data.needsTranslation) {
                             self.postMessage({ type: 'status', text: 'הפענוח הסתיים! מכין מודל תרגום...' });
-                            self.postMessage({ type: 'progress_percent', percent: 60 });
+                            self.postMessage({ type: 'phase', phase: 'loading_translation' });
                             
                             if (!translator) {
                                 try {
@@ -540,12 +562,13 @@
                             }
 
                             self.postMessage({ type: 'status', text: 'מודל תרגום מוכן! מתרגם משפטים ברקע...' });
+                            self.postMessage({ type: 'phase', phase: 'translating' });
                             
                             const src_lang = data.nllbSrc;
                             const tgt_lang = data.nllbTgt;
 
                             for (let i = 0; i < output.chunks.length; i++) {
-                                self.postMessage({ type: 'progress_percent', percent: 80 + Math.round((i / output.chunks.length) * 20) });
+                                self.postMessage({ type: 'phase_progress', phase: 'translating', percent: ((i + 1) / output.chunks.length) * 100 });
                                 const translated = await translator(output.chunks[i].text, {
                                     src_lang: src_lang,
                                     tgt_lang: tgt_lang
@@ -580,6 +603,11 @@
           const [statusText, setStatusText] = useState('');
           const [srtResult, setSrtResult] = useState('');
           const [modelSize, setModelSize] = useState('Xenova/whisper-base');
+          
+          // Phase Tracking States
+          const [currentPhase, setCurrentPhase] = useState('');
+          const [phaseProgress, setPhaseProgress] = useState({});
+          const [isTranslatingRequired, setIsTranslatingRequired] = useState(false);
           
           // Language Settings
           const [sourceLang, setSourceLang] = useState(() => localStorage.getItem('sourceLang') || 'auto');
@@ -621,6 +649,7 @@
           const [editorFontSize, setEditorFontSize] = useState(() => localStorage.getItem('editorFontSize') || '15px');
           const [threads, setThreads] = useState(() => parseInt(localStorage.getItem('threads')) || 0);
           const [useWebGPU, setUseWebGPU] = useState(() => localStorage.getItem('useWebGPU') === 'true');
+          const [progressStyle, setProgressStyle] = useState(() => localStorage.getItem('progressStyle') || 'stepper');
           
           // --- Subtitle Customization States ---
           const [maxCharsPerLine, setMaxCharsPerLine] = useState(() => parseInt(localStorage.getItem('maxCharsPerLine')) || 42);
@@ -651,6 +680,7 @@
           useEffect(() => localStorage.setItem('editorFontSize', editorFontSize), [editorFontSize]);
           useEffect(() => localStorage.setItem('threads', threads.toString()), [threads]);
           useEffect(() => localStorage.setItem('useWebGPU', useWebGPU.toString()), [useWebGPU]);
+          useEffect(() => localStorage.setItem('progressStyle', progressStyle), [progressStyle]);
           useEffect(() => localStorage.setItem('maxCharsPerLine', maxCharsPerLine.toString()), [maxCharsPerLine]);
           useEffect(() => localStorage.setItem('removePunctuation', removePunctuation.toString()), [removePunctuation]);
           
@@ -832,17 +862,20 @@
             workerRef.current = new Worker(workerUrl, { type: 'module' });
 
             workerRef.current.onmessage = (e) => {
-                const { type, text, percent, step, data, chunks, error } = e.data;
+                const { type, text, percent, step, phase, data, chunks, error } = e.data;
                 
                 // תפיסת הודעות תהליך מרכזי
                 if (type === 'status') setStatusText(text);
-                else if (type === 'progress_percent') setProgress(percent);
+                else if (type === 'phase') setCurrentPhase(phase);
+                else if (type === 'phase_progress') {
+                    setPhaseProgress(prev => ({ ...prev, [phase]: percent }));
+                }
                 else if (type === 'progress') handleWorkerProgress(step, data);
                 else if (type === 'complete') {
                     const srt = formatSRT(chunks, maxCharsRef.current, removePunctRef.current);
                     setSrtResult(srt);
-                    setProgress(100);
                     setStatus('complete');
+                    setCurrentPhase('complete');
                     calculateStorageUsed(); 
                     
                     // אפקט קונפטי חגיגי בסיום ההורדה והפענוח
@@ -899,21 +932,23 @@
 
           const handleWorkerProgress = (step, data) => {
               if (step === 'transcribe_load') {
+                  setCurrentPhase('loading_asr');
                   const downloads = whisperDownloadsRef.current;
                   if (data.status === 'initiate') downloads[data.file] = { loaded: 0, total: 0 };
                   else if (data.status === 'progress') downloads[data.file] = { loaded: data.loaded || 0, total: data.total || 0 };
                   else if (data.status === 'done' && downloads[data.file]) downloads[data.file].loaded = downloads[data.file].total;
-                  updateProgressFromDownloads(downloads, 10, 0.3, "זיהוי קולי");
+                  updateProgressFromDownloads(downloads, 'loading_asr', "זיהוי קולי", 10, 0.3);
               } else if (step === 'translate_load') {
+                  setCurrentPhase('loading_translation');
                   const downloads = nllbDownloadsRef.current;
                   if (data.status === 'initiate') downloads[data.file] = { loaded: 0, total: 0 };
                   else if (data.status === 'progress') downloads[data.file] = { loaded: data.loaded || 0, total: data.total || 0 };
                   else if (data.status === 'done' && downloads[data.file]) downloads[data.file].loaded = downloads[data.file].total;
-                  updateProgressFromDownloads(downloads, 60, 0.2, "תרגום");
+                  updateProgressFromDownloads(downloads, 'loading_translation', "תרגום", 60, 0.2);
               }
           };
 
-          const updateProgressFromDownloads = (downloadsObj, baseProgress, weight, modelName) => {
+          const updateProgressFromDownloads = (downloadsObj, phaseId, modelName, baseProgress, weight) => {
               let totalLoaded = 0;
               let totalSize = 0;
               Object.values(downloadsObj).forEach(f => {
@@ -922,10 +957,10 @@
               });
               if (totalSize > 0) {
                   const overallProgress = (totalLoaded / totalSize) * 100;
-                  // הגנה מפני NaN Progress במקרה שהשרת לא מחזיר Content-Length
                   if (!isNaN(overallProgress)) {
-                      setProgress(baseProgress + Math.round(overallProgress * weight));
-                      setStatusText(`מוריד/קורא מודל ${modelName}... ${Math.round(overallProgress)}% (מואץ)`);
+                      setPhaseProgress(prev => ({ ...prev, [phaseId]: overallProgress }));
+                      setProgress(baseProgress + Math.round(overallProgress * weight)); // עדכון אחוז כללי לפס הטעינה הקלאסי
+                      setStatusText(uiLang === 'he' ? `מוריד/קורא מודל ${modelName}... ${Math.round(overallProgress)}%` : `Loading ${modelName} model... ${Math.round(overallProgress)}%`);
                   }
               }
           };
@@ -1155,6 +1190,14 @@
             const currentSession = processingSessionRef.current;
             let audioCtx = null;
             
+            const isAutoSource = sourceLang === 'auto';
+            const isOriginalTarget = targetLang === 'original';
+            const needsTranslation = !isAutoSource && !isOriginalTarget && sourceLang !== targetLang;
+            
+            setIsTranslatingRequired(needsTranslation);
+            setCurrentPhase('extracting_audio');
+            setPhaseProgress({});
+            
             // אזהרת זיכרון לקבצים עצומים למניעת קריסת הדפדפן
             if (file.size > 500 * 1024 * 1024) {
                 if (!window.confirm(uiLang === 'he' ? 
@@ -1226,10 +1269,6 @@
               
               setProgress(12);
               setStatusText(uiLang === 'he' ? 'מעביר נתונים למנוע הבינה המלאכותית (Web Worker)...' : 'Transferring data to AI engine...');
-
-              const isAutoSource = sourceLang === 'auto';
-              const isOriginalTarget = targetLang === 'original';
-              const needsTranslation = !isAutoSource && !isOriginalTarget && sourceLang !== targetLang;
 
               let nllbSrc = null;
               let nllbTgt = null;
@@ -1531,6 +1570,11 @@
                   processingWarn: "הפעולה מתבצעת באופן מקומי לחלוטין על גבי מעבד המחשב שלך. אנא אל תסגור דף זה.",
                   cancelProcess: "בטל פעולה",
                   progress: "התקדמות",
+                  stepExtractAudio: "חילוץ והכנת שמע (מקומי)",
+                  stepLoadAsr: "טעינת מודל זיהוי קול (AI)",
+                  stepTranscribe: "פענוח וזיהוי דיבור מורכב",
+                  stepLoadTrans: "טעינת מודל תרגום עמוק (AI)",
+                  stepTranslate: "תרגום טקסט וכתוביות",
                   readyTitle: "הכיתוביות מוכנות!",
                   readyDesc: "העיבוד המקומי הסתיים בהצלחה. ניתן לערוך את הטקסט למטה לפני ההורדה.",
                   copy: "העתק",
@@ -1576,6 +1620,9 @@
                   maxCharsDesc: "מפצל אוטומטית כתוביות ארוכות לשורות קצרות. משפיע על פענוח של קבצים חדשים.",
                   removePunctuationLabel: "הסרת סימני פיסוק (.,!?)",
                   unlimited: "ללא הגבלה",
+                  progressStyleLabel: "סגנון תצוגת טעינה:",
+                  styleStepper: "שלבים מפורטים",
+                  styleBar: "פס רגיל (קלאסי)",
                   closeSave: "סגור ושמור",
                   apiTitle: "הגדרת מפתח Gemini API",
                   apiDesc: "כדי להשתמש בתכונות ה-AI המתקדמות (תמצות, הגהה, עריכה יצירתית), עליך לספק מפתח API משלך. המפתח נשמר מקומית בדפדפן שלך בלבד ולא נשלח לשום שרת זר.",
@@ -1614,6 +1661,11 @@
                   processingWarn: "Processing locally on your computer's CPU. Please do not close this page.",
                   cancelProcess: "Cancel Process",
                   progress: "Progress",
+                  stepExtractAudio: "Extracting Audio (Local)",
+                  stepLoadAsr: "Loading Speech Model (AI)",
+                  stepTranscribe: "Transcribing Speech",
+                  stepLoadTrans: "Loading Translation Model (AI)",
+                  stepTranslate: "Translating Subtitles",
                   readyTitle: "Subtitles are ready!",
                   readyDesc: "Local processing completed successfully. You can edit the text below before downloading.",
                   copy: "Copy",
@@ -1659,6 +1711,9 @@
                   maxCharsDesc: "Automatically splits long subtitles into shorter lines. Affects new files.",
                   removePunctuationLabel: "Remove Punctuation (.,!?)",
                   unlimited: "Unlimited",
+                  progressStyleLabel: "Loading Display Style:",
+                  styleStepper: "Detailed Steps",
+                  styleBar: "Classic Bar",
                   closeSave: "Close & Save",
                   apiTitle: "Set Gemini API Key",
                   apiDesc: "To use advanced AI features (summarization, proofreading, creative adaptation), you must provide your own API key. The key is saved locally in your browser and is not sent to any external server.",
@@ -1688,7 +1743,7 @@
           }
 
           return (
-            <div dir={uiLang === 'he' ? 'rtl' : 'ltr'} className="min-h-screen pb-12 pt-6 px-4 sm:px-6 lg:px-8 flex flex-col items-center relative text-slate-800 dark:text-slate-200 overflow-x-hidden">
+            <div dir={uiLang === 'he' ? 'rtl' : 'ltr'} className="min-h-screen pb-12 pt-8 px-4 sm:px-6 lg:px-8 flex flex-col items-center relative text-slate-800 dark:text-slate-200 selection:bg-indigo-500/30 overflow-x-hidden">
               
               {/* אפקטי רקע צפים (Animated Background Orbs) */}
               <div className="fixed inset-0 overflow-hidden pointer-events-none z-0 flex justify-center items-center opacity-40 dark:opacity-20 mix-blend-multiply dark:mix-blend-screen transition-opacity duration-1000">
@@ -1701,57 +1756,61 @@
               <div className="w-full flex flex-col items-center transition-all duration-700 relative z-10">
                   
                   {/* Header area */}
-                  <div className="w-full max-w-4xl flex justify-between items-end mb-6">
-                    <div className="flex flex-col gap-1">
-                      <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
-                        <span className="bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">AI Subtitles</span>
-                        <Sparkles className="text-indigo-500 dark:text-indigo-400 animate-pulse" size={28} />
+                  <div className="w-full max-w-4xl flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6 mb-10">
+                    <div className="flex flex-col gap-2 text-center sm:text-right">
+                      <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white tracking-tight flex items-center justify-center sm:justify-start gap-3 drop-shadow-sm">
+                        <span className="bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 bg-[length:200%_auto] animate-shimmer bg-clip-text text-transparent">AI Subtitles</span>
+                        <Sparkles className="text-indigo-500 dark:text-indigo-400 animate-pulse" size={32} />
                       </h1>
-                      <p className="text-slate-500 dark:text-slate-400 font-medium ml-1">{t.subtitle}</p>
+                      <p className="text-slate-500 dark:text-slate-400 font-medium ml-1 text-sm sm:text-base">{t.subtitle}</p>
                     </div>
                     
                     {/* User Profile & Storage */}
-                    <div className="hidden sm:flex items-center gap-3 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200/60 dark:border-slate-700/60 shadow-sm rounded-full py-1.5 px-4 hover:bg-white dark:hover:bg-slate-800 transition-colors group">
+                    <div className="hidden sm:flex items-center gap-2 bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-slate-200/80 dark:border-slate-700/80 shadow-[0_2px_10px_rgb(0,0,0,0.02)] rounded-2xl py-2 px-4 hover:bg-white dark:hover:bg-slate-800 transition-all duration-300 group">
                       {user && user.email && user.email !== 'Anonymous' && (
-                          <div className="flex items-center gap-2 pr-2 border-l border-slate-300 dark:border-slate-600">
-                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 max-w-[100px] truncate" title={user.email}>{user.displayName || user.email}</span>
+                          <div className="flex items-center gap-2 pr-3 pl-1 border-l border-slate-200 dark:border-slate-700">
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={user.email}>{user.displayName || user.email}</span>
                           </div>
                       )}
 
                       <button 
                           onClick={() => setUiLang(uiLang === 'he' ? 'en' : 'he')} 
-                          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors border border-transparent hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-300"
                           title="שנה שפה / Change Language"
                       >
-                          <Globe size={14} />
+                          <Globe size={16} />
                           {uiLang === 'he' ? 'EN' : 'HE'}
                       </button>
                       
                       <button 
                           onClick={() => setShowSettingsModal(true)} 
-                          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors border border-transparent hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-300"
                           title={t.settings}
                       >
-                          <Settings size={14} />
+                          <Settings size={16} />
                           {t.settings}
                       </button>
 
                       <button 
                           onClick={openApiKeyModal} 
-                          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold transition-colors border ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all border active:scale-95 ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200/50 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50' : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
                           title={t.apiConnected}
                       >
-                          <Key size={14} />
+                          <Key size={16} />
                           {geminiApiKey ? t.apiConnected : t.setApi}
                       </button>
                       
-                      <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1"></div>
+                      <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-2"></div>
 
-                      <HardDrive size={16} className="text-indigo-500 dark:text-indigo-400 mr-2" />
-                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{t.storage} <span className="font-bold text-slate-800 dark:text-slate-200" dir="ltr">{storageUsedMB} MB</span></span>
-                      {parseFloat(storageUsedMB) > 0 && (
-                        <button onClick={clearStorage} title={t.clear} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full"><Trash2 size={14} /></button>
-                      )}
+                      <div className="flex items-center px-2">
+                          <HardDrive size={16} className="text-indigo-500 dark:text-indigo-400 mr-2" />
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                              {t.storage} <span className="font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded-md" dir="ltr">{storageUsedMB}MB</span>
+                          </span>
+                          {parseFloat(storageUsedMB) > 0 && (
+                            <button onClick={clearStorage} title={t.clear} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1.5 ml-1 active:scale-90 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                          )}
+                      </div>
                     </div>
                   </div>
 
@@ -1765,24 +1824,24 @@
                                   <p className="text-xs text-indigo-700 dark:text-indigo-300">{t.monthlyLogins} <strong className="text-sm bg-indigo-100 dark:bg-indigo-800/50 px-1.5 py-0.5 rounded">{adminStats.currentMonth}</strong></p>
                               </div>
                           </div>
-                          <button onClick={sendEmailReport} className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold py-2.5 px-5 rounded-xl shadow transition-colors flex items-center gap-2 text-sm">
+                          <button onClick={sendEmailReport} className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 active:scale-95 text-white font-bold py-2.5 px-5 rounded-xl shadow transition-all flex items-center gap-2 text-sm">
                               <Mail size={16} /> {t.sendReport}
                           </button>
                       </div>
                   )}
 
                   {/* Main Interaction Card */}
-                  <main className="w-full max-w-4xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-[2rem] shadow-xl border border-white/60 dark:border-slate-800/60 overflow-hidden relative">
-                    <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient-x"></div>
+                  <main className="w-full max-w-4xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-white/60 dark:border-slate-800/60 overflow-hidden relative ring-1 ring-slate-900/5 dark:ring-white/5">
+                    <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient-x opacity-80"></div>
 
-                    <div className="p-6 sm:p-10">
+                    <div className="p-6 sm:p-12">
                       
-                      <div className="grid gap-4 mb-8">
-                        <div className="bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-2xl p-4 flex items-start gap-4 shadow-sm">
-                          <Lock className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" size={24} />
+                      <div className="grid gap-4 mb-10">
+                        <div className="bg-blue-50/60 dark:bg-blue-900/10 border border-blue-100/80 dark:border-blue-800/30 rounded-2xl p-5 flex items-start gap-4 shadow-sm backdrop-blur-sm">
+                          <Lock className="text-blue-500 dark:text-blue-400 mt-0.5 shrink-0" size={22} />
                           <div>
-                            <h3 className="font-bold text-blue-900 dark:text-blue-200">{t.privacyTitle}</h3>
-                            <p className="text-blue-800 dark:text-blue-300 text-sm mt-1">{t.privacyDesc}</p>
+                            <h3 className="font-bold text-blue-900 dark:text-blue-300 text-sm sm:text-base">{t.privacyTitle}</h3>
+                            <p className="text-blue-700 dark:text-blue-400/80 text-xs sm:text-sm mt-1 leading-relaxed">{t.privacyDesc}</p>
                           </div>
                         </div>
                       </div>
@@ -1790,137 +1849,223 @@
                       {/* File Selection / Idle State */}
                       {status === 'idle' && !file && (
                         <div 
-                          className={`relative overflow-hidden border-2 border-dashed rounded-[2rem] p-12 sm:p-20 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 ease-out ${
-                            isDragging ? 'border-indigo-500 bg-indigo-50/80 dark:bg-indigo-900/30 scale-[1.03] animate-pulse-glow z-20' : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 bg-slate-50/50 dark:bg-slate-800/50 hover:bg-slate-50 hover:shadow-lg dark:hover:bg-slate-800 z-10'
+                          className={`relative overflow-hidden border-2 border-dashed rounded-[2rem] p-12 sm:p-24 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 ease-out group ${
+                            isDragging ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 scale-[1.01] shadow-inner z-20' : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400/80 dark:hover:border-indigo-500/70 bg-slate-50/30 dark:bg-slate-800/30 hover:bg-slate-50/80 hover:shadow-lg dark:hover:bg-slate-800/80 z-10'
                           }`}
                           onDragOver={handleDragOver}
                           onDragLeave={handleDragLeave}
                           onDrop={handleDrop}
                           onClick={() => fileInputRef.current?.click()}
                         >
-                          {isDragging && <div className="absolute left-0 right-0 h-1 bg-indigo-500 animate-scan z-0"></div>}
-                          <div className={`relative z-10 bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-md border border-slate-100 dark:border-slate-700 text-indigo-500 dark:text-indigo-400 mb-6 transition-transform duration-500 ${isDragging ? 'scale-125 rotate-6 shadow-xl' : 'hover:scale-110 hover:-rotate-3'}`}>
-                            <FileVideo size={56} className={isDragging ? 'animate-bounce text-indigo-600 dark:text-indigo-300' : ''} />
+                          {isDragging && <div className="absolute left-0 right-0 h-1 bg-indigo-500 animate-scan z-0 shadow-[0_0_15px_rgba(99,102,241,0.5)]"></div>}
+                          <div className={`relative z-10 bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 text-indigo-500 dark:text-indigo-400 mb-6 transition-all duration-300 group-hover:shadow-md group-hover:-translate-y-1 ${isDragging ? 'scale-110 shadow-md' : ''}`}>
+                            <FileVideo size={48} strokeWidth={1.5} className={isDragging ? 'animate-bounce text-indigo-600 dark:text-indigo-300' : ''} />
                           </div>
-                          <h3 className="relative z-10 text-2xl font-bold text-slate-800 dark:text-white mb-2">{t.dragTitle}</h3>
-                          <p className="relative z-10 text-slate-500 dark:text-slate-400 font-medium">{t.dragDesc}</p>
+                          <h3 className="relative z-10 text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-slate-100 mb-3 tracking-tight">{t.dragTitle}</h3>
+                          <p className="relative z-10 text-slate-500 dark:text-slate-400 font-medium text-sm sm:text-base">{t.dragDesc}</p>
                           <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="video/*,audio/*" />
                         </div>
                       )}
 
                       {/* File Info & Settings */}
                       {(file || status !== 'idle') && (
-                        <div className="space-y-6">
-                          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-5 transition-all">
-                            <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 text-indigo-600 dark:text-indigo-400">
-                              {file?.type?.startsWith('audio') ? <FileAudio size={28} /> : <FileVideo size={28} />}
+                        <div className="space-y-8">
+                          <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-center gap-5 transition-all shadow-[0_2px_15px_rgb(0,0,0,0.03)] dark:shadow-[0_2px_15px_rgb(0,0,0,0.2)]">
+                            <div className="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-xl text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-100 dark:ring-indigo-800/50">
+                              {file?.type?.startsWith('audio') ? <FileAudio size={28} strokeWidth={1.5} /> : <FileVideo size={28} strokeWidth={1.5} />}
                             </div>
                             <div className="flex-1 text-center sm:text-right">
-                              <h4 className="font-bold text-slate-800 dark:text-white text-lg truncate max-w-xs sm:max-w-md mx-auto sm:mx-0" dir="ltr">{file?.name}</h4>
+                              <h4 className="font-bold text-slate-800 dark:text-slate-100 text-lg truncate max-w-xs sm:max-w-md mx-auto sm:mx-0" dir="ltr">{file?.name}</h4>
                               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-mono">{(file?.size / (1024 * 1024)).toFixed(2)} MB</p>
                             </div>
                             {status === 'idle' && (
-                              <button onClick={resetApp} className="text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-red-500 dark:hover:text-red-400 px-5 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-white dark:hover:bg-slate-800 shadow-sm transition-all w-full sm:w-auto">{t.changeFile}</button>
+                              <button onClick={resetApp} className="text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 px-6 py-3 border border-slate-200 dark:border-slate-600 rounded-xl active:scale-95 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-200 dark:hover:border-red-800/50 shadow-sm transition-all w-full sm:w-auto">{t.changeFile}</button>
                             )}
                           </div>
 
                           {status === 'idle' && (
-                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-                              <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-lg border-b border-slate-100 dark:border-slate-800 pb-3">
+                            <div className="bg-slate-50/50 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-700/50 rounded-[2rem] p-6 sm:p-8 space-y-6 relative overflow-hidden">
+                              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                              
+                              <h4 className="font-extrabold text-slate-800 dark:text-white flex items-center gap-2 text-lg pb-2 relative z-10">
                                 <Settings2 size={20} className="text-indigo-500 dark:text-indigo-400" />
                                 {t.settings}
                               </h4>
-                              <div className="grid md:grid-cols-3 gap-4 pt-2">
-                                <div className="space-y-2">
-                                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center w-full mb-2">
+                              <div className="grid md:grid-cols-3 gap-5 pt-2 relative z-10">
+                                <div className="space-y-2.5">
+                                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center w-full">
                                       <span>{t.sourceLangLabel}</span>
                                       <button 
                                          onClick={handleDetectLanguage} 
                                          disabled={isDetectingLanguage || !file || status === 'processing'}
-                                         className="text-indigo-600 dark:text-indigo-400 text-xs flex items-center gap-1 hover:underline disabled:opacity-50 disabled:no-underline"
+                                         className="text-indigo-600 dark:text-indigo-400 text-xs flex items-center gap-1 hover:underline disabled:opacity-50 disabled:no-underline font-semibold bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-md transition-colors active:scale-95"
                                       >
                                          {isDetectingLanguage ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                          {isDetectingLanguage ? t.detecting : t.detectLanguageBtn}
                                       </button>
                                   </label>
                                   <div className="relative">
-                                      <select disabled={status === 'processing'} value={sourceLang} onChange={handleSourceLangChange} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm disabled:opacity-50">
+                                      <select disabled={status === 'processing'} value={sourceLang} onChange={handleSourceLangChange} className="w-full p-4 pl-11 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-semibold text-slate-700 dark:text-slate-200 appearance-none transition-shadow shadow-sm hover:shadow-md disabled:opacity-50">
                                           <option value="auto" className="font-bold text-indigo-600 dark:text-indigo-400">{t.autoDetect}</option>
                                           {SUPPORTED_LANGUAGES.map(l => (
                                               <option key={`src-${l.code}`} value={l.code}>{l.name[uiLang]}</option>
                                           ))}
                                       </select>
-                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
+                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400 dark:text-slate-500">
                                           <Globe className="h-5 w-5" />
                                       </div>
                                   </div>
                                 </div>
-                                <div className="space-y-2">
-                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.targetLangLabel}</label>
+                                <div className="space-y-2.5">
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mt-1.5">{t.targetLangLabel}</label>
                                   <div className="relative">
                                       <select 
                                           value={targetLang} 
                                           onChange={(e) => setTargetLang(e.target.value)} 
                                           disabled={sourceLang === 'auto' || status === 'processing'}
-                                          className={`w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm ${sourceLang === 'auto' ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900'} disabled:opacity-50`}
+                                          className={`w-full p-4 pl-11 border border-slate-300 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-semibold text-slate-700 dark:text-slate-200 appearance-none transition-shadow shadow-sm hover:shadow-md ${sourceLang === 'auto' ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800/50' : 'bg-white dark:bg-slate-800'} disabled:opacity-50`}
                                       >
                                           <option value="original" className="font-bold text-indigo-600 dark:text-indigo-400">{t.originalLang}</option>
                                           {SUPPORTED_LANGUAGES.map(l => (
                                               <option key={`tgt-${l.code}`} value={l.code}>{l.name[uiLang]}</option>
                                           ))}
                                       </select>
-                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
+                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400 dark:text-slate-500">
                                           <Wand2 className="h-5 w-5" />
                                       </div>
                                   </div>
                                 </div>
-                                <div className="space-y-2">
-                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{t.modelSize}</label>
+                                <div className="space-y-2.5">
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mt-1.5">{t.modelSize}</label>
                                   <div className="relative">
-                                      <select disabled={status === 'processing'} value={modelSize} onChange={(e) => setModelSize(e.target.value)} className="w-full p-3.5 pl-10 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none transition-all shadow-sm disabled:opacity-50">
+                                      <select disabled={status === 'processing'} value={modelSize} onChange={(e) => setModelSize(e.target.value)} className="w-full p-4 pl-11 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-semibold text-slate-700 dark:text-slate-200 appearance-none transition-shadow shadow-sm hover:shadow-md disabled:opacity-50">
                                           <option value="Xenova/whisper-tiny">{uiLang === 'he' ? "Tiny (מהיר מאוד)" : "Tiny (Very Fast)"}</option>
                                           <option value="Xenova/whisper-base">{uiLang === 'he' ? "Base (מומלץ ומהיר!)" : "Base (Recommended!)"}</option>
                                           <option value="Xenova/whisper-small">{uiLang === 'he' ? "Small (איכותי - מחשב ממוצע)" : "Small (High Quality)"}</option>
                                           <option value="Xenova/whisper-medium">{uiLang === 'he' ? "Medium (מדויק - מחשב חזק)" : "Medium (Accurate - Strong PC)"}</option>
                                           <option value="Xenova/whisper-large-v3">{uiLang === 'he' ? "Large V3 (הכי מדויק בעולם - כבד מאוד)" : "Large V3 (Most Accurate - Very Heavy)"}</option>
                                       </select>
-                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 dark:text-slate-500">
+                                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400 dark:text-slate-500">
                                           <Cpu className="h-5 w-5" />
                                       </div>
                                   </div>
                                 </div>
                               </div>
-                              <button onClick={processFileLocal} disabled={status === 'processing'} className="w-full mt-4 bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-[0_8px_25px_rgba(79,70,229,0.4)] hover:-translate-y-1 transition-all flex justify-center items-center gap-3 text-lg">
-                                <Activity size={24} className="animate-pulse" /> {t.startProcessing}
+                              <button onClick={processFileLocal} disabled={status === 'processing'} className="w-full mt-8 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:from-slate-400 disabled:to-slate-400 dark:disabled:from-slate-700 dark:disabled:to-slate-700 disabled:opacity-50 text-white font-extrabold py-4 px-8 rounded-2xl shadow-lg hover:shadow-[0_8px_25px_rgba(99,102,241,0.35)] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 flex justify-center items-center gap-3 text-lg ring-1 ring-white/20 relative overflow-hidden group">
+                                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:animate-shimmer"></div>
+                                <Activity size={24} className="animate-pulse relative z-10" /> <span className="relative z-10">{t.startProcessing}</span>
                               </button>
                             </div>
                           )}
 
                           {status === 'processing' && (
-                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-10 flex flex-col items-center text-center relative overflow-hidden border border-slate-200/60 dark:border-slate-700/60 shadow-inner">
-
-                              <div className="flex items-end justify-center gap-1.5 h-16 mb-6">
-                                  {[1, 2, 3, 4, 5, 6, 7].map(i => (
-                                      <div key={i} className={`w-2.5 bg-gradient-to-t from-indigo-600 to-purple-400 rounded-full animate-sound-wave delay-${i % 5 + 1}`} style={{ animationDuration: `${0.6 + (i * 0.1)}s` }}></div>
-                                  ))}
-                              </div>
-
-                              <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-3">{statusText}</h3>
-                              <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 max-w-sm">{t.processingWarn}</p>
+                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] p-8 sm:p-12 flex flex-col relative overflow-hidden border border-slate-200/60 dark:border-slate-700/60 shadow-inner">
                               
-                              <div className="w-full max-w-md">
-                                  <div className="flex justify-between text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">
-                                      <span>{t.progress}</span>
-                                      <span dir="ltr" className="text-indigo-600 dark:text-indigo-400">{progress}%</span>
+                              <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-500/5 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none"></div>
+
+                              <div className="flex flex-col items-center text-center mb-10 relative z-10">
+                                  <div className="flex items-end justify-center gap-1.5 h-12 mb-5">
+                                      {[1, 2, 3, 4, 5, 6, 7].map(i => (
+                                          <div key={i} className={`w-2 bg-gradient-to-t from-indigo-600 to-purple-400 rounded-full animate-sound-wave delay-${i % 5 + 1}`} style={{ animationDuration: `${0.6 + (i * 0.1)}s` }}></div>
+                                      ))}
                                   </div>
-                                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden shadow-inner">
-                                    <div className="h-full bg-gradient-to-l from-indigo-500 to-purple-500 transition-all duration-300 relative" style={{ width: `${progress}%` }}>
-                                        <div className="absolute inset-0 w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[stripes_1s_linear_infinite]"></div>
-                                    </div>
-                                  </div>
+                                  <h3 className="text-2xl font-extrabold text-slate-800 dark:text-white mb-2">{statusText}</h3>
+                                  <p className="text-slate-500 dark:text-slate-400 text-sm max-w-sm">{t.processingWarn}</p>
                               </div>
                               
-                              <button onClick={resetApp} className="mt-8 flex items-center justify-center gap-2 px-6 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm">
+                              {/* --- Enhanced Stepper UI OR Classic Bar --- */}
+                              {progressStyle === 'stepper' ? (
+                                  <div className="w-full max-w-lg mx-auto relative z-10" dir={uiLang === 'he' ? 'rtl' : 'ltr'}>
+                                      {(() => {
+                                          const activeSteps = [
+                                              { id: 'extracting_audio', label: t.stepExtractAudio, hasAccurateProgress: false },
+                                              { id: 'loading_asr', label: t.stepLoadAsr, hasAccurateProgress: true },
+                                              { id: 'transcribing', label: t.stepTranscribe, hasAccurateProgress: false }
+                                          ];
+                                          
+                                          if (isTranslatingRequired) {
+                                              activeSteps.push({ id: 'loading_translation', label: t.stepLoadTrans, hasAccurateProgress: true });
+                                              activeSteps.push({ id: 'translating', label: t.stepTranslate, hasAccurateProgress: true });
+                                          }
+
+                                          const currentIndex = currentPhase === 'complete' ? activeSteps.length : activeSteps.findIndex(s => s.id === currentPhase);
+
+                                          return activeSteps.map((step, index) => {
+                                              const isPast = currentIndex > index || currentPhase === 'complete';
+                                              const isActive = currentIndex === index;
+                                              const progress = phaseProgress[step.id] || 0;
+                                              const isLast = index === activeSteps.length - 1;
+
+                                              return (
+                                                  <div key={step.id} className="flex gap-5 relative group">
+                                                      
+                                                      {/* Circle and Line */}
+                                                      <div className="flex flex-col items-center">
+                                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 z-10 ${
+                                                              isPast ? 'bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] scale-100' : 
+                                                              isActive ? 'bg-indigo-600 shadow-[0_0_25px_rgba(79,70,229,0.5)] ring-4 ring-indigo-500/20 scale-110' : 
+                                                              'bg-slate-200 dark:bg-slate-700 scale-90 opacity-70'
+                                                          }`}>
+                                                              {isPast ? <Check size={20} className="text-white animate-check-pop" strokeWidth={3} /> : 
+                                                               isActive ? <Loader2 size={18} className="text-white animate-spin" /> :
+                                                               <span className="text-slate-500 dark:text-slate-400 font-bold">{index + 1}</span>}
+                                                          </div>
+                                                          {!isLast && (
+                                                              <div className={`w-0.5 flex-1 my-2 border-s-2 ${uiLang==='he' ? 'border-e-2 border-s-0' : ''} ${
+                                                                  isPast ? 'border-solid border-emerald-500' : 'border-dashed border-slate-300 dark:border-slate-600'
+                                                              } min-h-[45px] transition-all duration-500`}></div>
+                                                          )}
+                                                      </div>
+                                                      
+                                                      {/* Content */}
+                                                      <div className="flex-1 pt-1 pb-8">
+                                                          <h4 className={`text-base sm:text-lg font-bold transition-colors duration-300 ${
+                                                              isPast ? 'text-emerald-600 dark:text-emerald-400' : 
+                                                              isActive ? 'text-indigo-600 dark:text-indigo-400' : 
+                                                              'text-slate-400 dark:text-slate-500'
+                                                          }`}>{step.label}</h4>
+                                                          
+                                                          {/* Progress Bar */}
+                                                          <div className={`mt-3 w-full transition-all duration-500 origin-left ${isActive || isPast ? 'opacity-100 max-h-10' : 'opacity-0 max-h-0 overflow-hidden'}`}>
+                                                              {step.hasAccurateProgress ? (
+                                                                  <div className="flex items-center gap-3">
+                                                                      <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden shadow-inner">
+                                                                          <div className={`h-full transition-all duration-300 ${isPast ? 'bg-emerald-500' : 'bg-gradient-to-l from-indigo-500 to-purple-500'}`} style={{ width: `${isPast ? 100 : progress}%` }}></div>
+                                                                      </div>
+                                                                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 min-w-[3ch]">{isPast ? 100 : Math.round(progress)}%</span>
+                                                                  </div>
+                                                              ) : (
+                                                                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden shadow-inner relative">
+                                                                      {isPast ? (
+                                                                          <div className="h-full w-full bg-emerald-500 transition-all duration-500"></div>
+                                                                      ) : (
+                                                                          <div className="h-full w-1/2 bg-gradient-to-l from-indigo-500 to-purple-500 absolute top-0 bottom-0 animate-indeterminate rounded-full"></div>
+                                                                      )}
+                                                                  </div>
+                                                              )}
+                                                          </div>
+                                                      </div>
+                                                  </div>
+                                              );
+                                          });
+                                      })()}
+                                  </div>
+                              ) : (
+                                  <div className="w-full max-w-md mx-auto relative z-10">
+                                      <div className="flex justify-between text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">
+                                          <span>{t.progress}</span>
+                                          <span dir="ltr" className="text-indigo-600 dark:text-indigo-400">{progress}%</span>
+                                      </div>
+                                      <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden shadow-inner relative">
+                                        <div className="h-full bg-gradient-to-l from-indigo-500 to-purple-500 transition-all duration-300 relative" style={{ width: `${progress}%` }}>
+                                            <div className="absolute inset-0 w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[stripes_1s_linear_infinite]"></div>
+                                            <div className="absolute top-0 bottom-0 right-0 w-4 bg-white/50 blur-[4px]"></div>
+                                        </div>
+                                      </div>
+                                  </div>
+                              )}
+                              
+                              <button onClick={resetApp} className="mx-auto mt-6 flex items-center justify-center gap-2 px-6 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-sm relative z-10">
                                   <XCircle size={18} /> {t.cancelProcess}
                               </button>
                             </div>
@@ -1932,18 +2077,18 @@
                                 <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl p-6 sm:p-8 text-white flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden">
                                     <div className="absolute -right-10 -top-10 opacity-10"><CheckCircle size={150} /></div>
                                     <div className="flex flex-col sm:flex-row items-center gap-5 relative z-10 text-center sm:text-right">
-                                        <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm border border-white/30 shadow-inner"><CheckCircle size={36}/></div>
+                                        <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm border border-white/30 shadow-inner animate-check-pop"><CheckCircle size={36}/></div>
                                         <div>
                                             <h4 className="font-extrabold text-2xl mb-1">{t.readyTitle}</h4>
                                             <p className="text-emerald-50 text-sm font-medium opacity-90">{t.readyDesc}</p>
                                         </div>
                                     </div>
                                     <div className="flex gap-3 w-full sm:w-auto relative z-10">
-                                        <button onClick={copyToClipboard} className="flex-1 sm:flex-none bg-emerald-700/50 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow border border-emerald-500/30 flex items-center justify-center gap-2">
+                                        <button onClick={copyToClipboard} className="flex-1 sm:flex-none bg-emerald-700/50 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow border border-emerald-500/30 flex items-center justify-center gap-2 active:scale-95">
                                             {copied ? <Check size={18} /> : <Copy size={18} />}
                                             {copied ? t.copied : t.copy}
                                         </button>
-                                        <button onClick={downloadSrt} className="flex-1 sm:flex-none bg-white text-emerald-700 hover:bg-emerald-50 font-bold py-3 px-6 rounded-xl hover:scale-105 transition-all shadow-lg flex items-center justify-center gap-2">
+                                        <button onClick={downloadSrt} className="flex-1 sm:flex-none bg-white text-emerald-700 hover:bg-emerald-50 font-bold py-3 px-6 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2">
                                             <Download size={18}/> {t.downloadBtn} {exportFormat.toUpperCase()}
                                         </button>
                                     </div>
@@ -1963,7 +2108,7 @@
                                 )}
 
                                 {/* Live Editor with Sync Controls */}
-                                <div className="bg-[#0f172a] rounded-2xl overflow-hidden shadow-2xl border border-slate-700 focus-within:border-indigo-500 transition-colors">
+                                <div className="bg-[#0f172a] rounded-2xl overflow-hidden shadow-2xl border border-slate-700 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
                                     <div className="bg-slate-900 px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 gap-4">
                                         <div className="flex items-center gap-3">
                                             <div className="flex gap-2 hidden sm:flex">
@@ -1978,10 +2123,10 @@
                                         <div className="flex items-center justify-between sm:justify-end gap-3 bg-slate-800/50 p-1.5 rounded-lg border border-slate-700/50">
                                             <span className="text-xs text-slate-400 font-bold flex items-center gap-1.5 ml-2"><Clock size={14} className="text-indigo-400" /> {t.syncSubtitles}:</span>
                                             <div className="flex gap-1.5">
-                                                <button onClick={() => shiftSubtitles(-100)} title={t.advanceSub} className="bg-slate-700/80 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md transition-colors text-xs font-bold font-mono shadow-sm flex items-center gap-1">
+                                                <button onClick={() => shiftSubtitles(-100)} title={t.advanceSub} className="bg-slate-700/80 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md transition-colors text-xs font-bold font-mono shadow-sm active:scale-90 flex items-center gap-1">
                                                     <Minus size={12}/> 100ms
                                                 </button>
-                                                <button onClick={() => shiftSubtitles(100)} title={t.delaySub} className="bg-slate-700/80 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md transition-colors text-xs font-bold font-mono shadow-sm flex items-center gap-1">
+                                                <button onClick={() => shiftSubtitles(100)} title={t.delaySub} className="bg-slate-700/80 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md transition-colors text-xs font-bold font-mono shadow-sm active:scale-90 flex items-center gap-1">
                                                     <Plus size={12}/> 100ms
                                                 </button>
                                             </div>
@@ -1992,7 +2137,7 @@
                                             value={srtResult}
                                             onChange={(e) => setSrtResult(e.target.value)}
                                             style={{ fontSize: editorFontSize }}
-                                            className="w-full bg-transparent text-slate-300 leading-relaxed font-mono p-6 outline-none custom-scrollbar resize-y min-h-[300px] transition-all"
+                                            className="w-full bg-transparent text-slate-300 leading-relaxed font-mono p-6 outline-none custom-scrollbar resize-y min-h-[300px] transition-all focus:bg-slate-800/20"
                                             dir="ltr"
                                             spellCheck="false"
                                             placeholder="..."
@@ -2017,7 +2162,7 @@
                                                 <button onClick={openApiKeyModal} className="ml-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">{uiLang === 'he' ? 'שנה מפתח' : 'Change Key'}</button>
                                             </div>
                                         ) : (
-                                            <button onClick={openApiKeyModal} className="text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-600 transition-colors">
+                                            <button onClick={openApiKeyModal} className="text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-600 transition-colors active:scale-95">
                                                 {t.setApi}
                                             </button>
                                         )}
@@ -2027,28 +2172,28 @@
                                         <button 
                                             onClick={() => triggerLlmAction('summary')}
                                             disabled={isLlmLoading}
-                                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 font-bold py-2.5 px-5 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 font-bold py-2.5 px-5 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
                                         >
                                             <AlignLeft size={18} /> {t.summary}
                                         </button>
                                         <button 
                                             onClick={() => triggerLlmAction('grammar')}
                                             disabled={isLlmLoading}
-                                            className="bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:text-purple-300 font-bold py-2.5 px-5 rounded-xl border border-purple-200 dark:border-purple-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                            className="bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:text-purple-300 font-bold py-2.5 px-5 rounded-xl border border-purple-200 dark:border-purple-800 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
                                         >
                                             <CheckSquare size={18} /> {t.grammar}
                                         </button>
                                         <button 
                                             onClick={() => triggerLlmAction('topics')}
                                             disabled={isLlmLoading}
-                                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300 font-bold py-2.5 px-5 rounded-xl border border-blue-200 dark:border-blue-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300 font-bold py-2.5 px-5 rounded-xl border border-blue-200 dark:border-blue-800 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
                                         >
                                             <List size={18} /> {t.topics}
                                         </button>
                                         <button 
                                             onClick={() => triggerLlmAction('cinematic')}
                                             disabled={isLlmLoading}
-                                            className="bg-pink-50 hover:bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:hover:bg-pink-900/50 dark:text-pink-300 font-bold py-2.5 px-5 rounded-xl border border-pink-200 dark:border-pink-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                            className="bg-pink-50 hover:bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:hover:bg-pink-900/50 dark:text-pink-300 font-bold py-2.5 px-5 rounded-xl border border-pink-200 dark:border-pink-800 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
                                         >
                                             <Wand2 size={18} /> {t.cinematic}
                                         </button>
@@ -2079,7 +2224,7 @@
                                     )}
                                 </div>
 
-                                <button onClick={resetApp} className="w-full py-4 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm mt-6">
+                                <button onClick={resetApp} className="w-full py-4 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm active:scale-[0.98] mt-6">
                                     {t.startOver}
                                 </button>
                             </div>
@@ -2092,7 +2237,7 @@
                                     <h4 className="font-bold text-red-800 dark:text-red-300 text-lg mb-1">{t.errorTitle}</h4>
                                     <p className="font-medium text-red-600 dark:text-red-400">{errorMessage}</p>
                                 </div>
-                                <button onClick={resetApp} className="mt-4 px-8 py-2.5 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 text-sm font-bold text-red-700 dark:text-red-400 rounded-xl shadow-sm hover:bg-red-50 dark:hover:bg-slate-700 transition-all">{t.tryAgain}</button>
+                                <button onClick={resetApp} className="mt-4 px-8 py-2.5 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 text-sm font-bold text-red-700 dark:text-red-400 rounded-xl shadow-sm hover:bg-red-50 dark:hover:bg-slate-700 active:scale-95 transition-all">{t.tryAgain}</button>
                             </div>
                           )}
                         </div>
@@ -2102,23 +2247,23 @@
               </div>
 
               {/* Mobile Footer Status */}
-              <div className="mt-8 sm:hidden flex flex-col items-center gap-3 w-full max-w-sm">
+              <div className="mt-8 sm:hidden flex flex-col items-center gap-3 w-full max-w-sm relative z-10">
                  <div className="flex items-center justify-between w-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200/60 dark:border-slate-700/60 shadow-sm rounded-full py-2.5 px-5">
                     <button 
                         onClick={() => setUiLang(uiLang === 'he' ? 'en' : 'he')} 
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 active:scale-95"
                     >
                         <Globe size={14} /> {uiLang === 'he' ? 'EN' : 'HE'}
                     </button>
                     <button 
                         onClick={() => setShowSettingsModal(true)} 
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 active:scale-95"
                     >
                         <Settings size={14} /> {t.settings}
                     </button>
                     <button 
                         onClick={openApiKeyModal} 
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors border active:scale-95 ${geminiApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}
                     >
                         <Key size={14} />
                         {geminiApiKey ? t.apiConnected : t.setApi}
@@ -2129,7 +2274,7 @@
               {/* Settings Modal */}
               {showSettingsModal && (
                   <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-all duration-300 p-4">
-                      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-modal-pop border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto custom-scrollbar">
                           
                           {/* System Settings Section */}
                           <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -2144,13 +2289,13 @@
                                   <div className="flex gap-3">
                                       <button 
                                           onClick={() => setTheme('light')}
-                                          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 border-2 font-bold transition-all ${theme === 'light' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 border-2 font-bold transition-all active:scale-95 ${theme === 'light' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
                                       >
                                           <Sun size={18} /> {t.light}
                                       </button>
                                       <button 
                                           onClick={() => setTheme('dark')}
-                                          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 border-2 font-bold transition-all ${theme === 'dark' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 border-2 font-bold transition-all active:scale-95 ${theme === 'dark' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
                                       >
                                           <Moon size={18} /> {t.dark}
                                       </button>
@@ -2175,7 +2320,7 @@
                               </div>
 
                               {/* WebGPU Toggle */}
-                              <label className="flex items-start gap-3 cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors">
+                              <label className="flex items-start gap-3 cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors active:scale-[0.98]">
                                   <input 
                                       type="checkbox" 
                                       checked={useWebGPU} 
@@ -2206,6 +2351,25 @@
                                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
                                       {t.chunksDesc}
                                   </p>
+                              </div>
+                              
+                              {/* Progress Bar Style */}
+                              <div>
+                                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">{t.progressStyleLabel}</label>
+                                  <div className="flex flex-col sm:flex-row gap-3">
+                                      <button 
+                                          onClick={() => setProgressStyle('stepper')}
+                                          className={`flex-1 py-2 px-3 rounded-xl font-bold transition-all border-2 active:scale-95 ${progressStyle === 'stepper' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                      >
+                                          {t.styleStepper}
+                                      </button>
+                                      <button 
+                                          onClick={() => setProgressStyle('bar')}
+                                          className={`flex-1 py-2 px-3 rounded-xl font-bold transition-all border-2 active:scale-95 ${progressStyle === 'bar' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                      >
+                                          {t.styleBar}
+                                      </button>
+                                  </div>
                               </div>
                           </div>
 
@@ -2239,7 +2403,7 @@
                               </div>
 
                               {/* Remove Punctuation Toggle */}
-                              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors active:scale-[0.98]">
                                   <input 
                                       type="checkbox" 
                                       checked={removePunctuation} 
@@ -2257,7 +2421,7 @@
                                           <button
                                               key={fmt}
                                               onClick={() => setExportFormat(fmt)}
-                                              className={`flex-1 py-2 px-3 rounded-xl font-bold transition-all border-2 ${exportFormat === fmt ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                              className={`flex-1 py-2 px-3 rounded-xl font-bold transition-all border-2 active:scale-95 ${exportFormat === fmt ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
                                           >
                                               {fmt.toUpperCase()}
                                           </button>
@@ -2277,7 +2441,7 @@
                                           <button
                                               key={size.id}
                                               onClick={() => setEditorFontSize(size.id)}
-                                              className={`flex-1 py-2 px-2 rounded-xl font-bold transition-all border-2 flex items-center justify-center gap-1.5 ${editorFontSize === size.id ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                              className={`flex-1 py-2 px-2 rounded-xl font-bold transition-all border-2 active:scale-95 flex items-center justify-center gap-1.5 ${editorFontSize === size.id ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-500/50 dark:text-indigo-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
                                           >
                                               {size.icon}
                                               <span className="text-sm">{size.label}</span>
@@ -2290,7 +2454,7 @@
                           <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
                               <button 
                                   onClick={() => setShowSettingsModal(false)}
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl transition-colors w-full sm:w-auto"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl transition-colors active:scale-95 w-full sm:w-auto"
                               >
                                   {t.closeSave}
                               </button>
@@ -2302,7 +2466,7 @@
               {/* API Key Modal */}
               {showApiKeyModal && (
                   <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-all duration-300 p-4">
-                      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in border border-slate-200 dark:border-slate-800">
+                      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-modal-pop border border-slate-200 dark:border-slate-800">
                           <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
                               <Lock className="text-indigo-500" size={20} />
                               {t.apiTitle}
@@ -2362,7 +2526,7 @@
                                   {geminiApiKey && !isEditingApiKey && (
                                       <button 
                                           onClick={handleRemoveApiKey}
-                                          className="px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 rounded-xl transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                                          className="px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 active:scale-95 rounded-xl transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800"
                                       >
                                           {t.deleteKey}
                                       </button>
@@ -2370,14 +2534,14 @@
                                   {geminiApiKey && !isEditingApiKey && (
                                       <button 
                                           onClick={() => { setIsEditingApiKey(true); setTempApiKey(geminiApiKey); }}
-                                          className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition-colors border border-slate-200 dark:border-slate-700"
+                                          className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 active:scale-95 rounded-xl transition-colors border border-slate-200 dark:border-slate-700"
                                       >
                                           {t.editKey}
                                       </button>
                                   )}
                                   <button 
                                       onClick={closeApiKeyModal}
-                                      className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                                      className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 active:scale-95 rounded-xl transition-colors"
                                   >
                                       {geminiApiKey && !isEditingApiKey ? t.close : t.cancel}
                                   </button>
@@ -2386,7 +2550,7 @@
                                   <button 
                                       onClick={handleSaveApiKey}
                                       disabled={!tempApiKey.trim()}
-                                      className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-800/50 text-white font-bold py-2 px-6 rounded-xl transition-colors"
+                                      className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-800/50 text-white font-bold py-2 px-6 rounded-xl transition-colors active:scale-95"
                                   >
                                       {t.closeSave}
                                   </button>
